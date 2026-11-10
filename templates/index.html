@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Générateur de fractionné</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<style>
+:root{--bg:#eef1f0;--card:#fff;--tx:#14212b;--mu:#5d6b75;--bd:#d5dcdb;--ef:#2447d8;--re:#9fb0bd;--wu:#7d8f9c;color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#10181e;--card:#18232b;--tx:#e9eef1;--mu:#93a2ad;--bd:#2b3a45;--ef:#6f8cff;--re:#4a5d6b;--wu:#5f7482;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#10181e;--card:#18232b;--tx:#e9eef1;--mu:#93a2ad;--bd:#2b3a45;--ef:#6f8cff;--re:#4a5d6b;--wu:#5f7482;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--tx);font:16px/1.45 Barlow,system-ui,sans-serif;padding:18px 16px 40px}
+main{max-width:720px;margin:0 auto}
+h1{font:700 34px/1.05 "Barlow Condensed",Impact,sans-serif;margin:4px 0 16px;letter-spacing:.01em}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:10px;padding:14px;margin-bottom:14px}
+.seg{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px}
+.seg button{font:600 15px Barlow,sans-serif;padding:10px 4px;border:1px solid var(--bd);background:transparent;color:var(--tx);border-radius:8px;cursor:pointer}
+.seg button[aria-pressed="true"]{background:var(--ef);border-color:var(--ef);color:#fff}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+label{display:block;font-size:13px;color:var(--mu)}
+input,select{width:100%;margin-top:3px;font:500 16px Barlow,sans-serif;padding:9px 10px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--ef);outline-offset:2px}
+.hide{display:none}
+#bars{display:flex;align-items:flex-end;gap:2px;height:130px;border-bottom:2px solid var(--tx);padding-bottom:0}
+#bars i{display:block;min-width:2px;border-radius:2px 2px 0 0;background:var(--re)}
+#bars i.interval{background:var(--ef)}
+#bars i.warmup,#bars i.cooldown{background:var(--wu)}
+#sum{font:600 20px "Barlow Condensed",sans-serif;margin:10px 0 2px}
+.note{font-size:13px;color:var(--mu);margin:0}
+ol{margin:0;padding-left:22px}
+li{padding:3px 0;border-bottom:1px solid var(--bd)}
+li b{font-variant-numeric:tabular-nums}
+li{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+li .nm{flex:1 1 120px}
+li.interval .nm{color:var(--ef);font-weight:600}
+li input{width:84px;margin:0;padding:6px 8px}
+li input.pc{width:76px}
+li small{color:var(--mu)}
+li .del{margin-left:auto;border:0;background:transparent;color:var(--mu);font-size:22px;line-height:1;cursor:pointer;padding:0 6px}
+textarea{width:100%;height:150px;font:13px/1.4 ui-monospace,Menlo,monospace;background:var(--bg);color:var(--tx);border:1px solid var(--bd);border-radius:8px;padding:8px}
+.copy{margin-top:8px;font:600 15px Barlow,sans-serif;padding:10px 16px;border:0;border-radius:8px;background:var(--ef);color:#fff;cursor:pointer}
+h2{font:700 20px "Barlow Condensed",sans-serif;margin:0 0 8px}
+</style>
+</head>
+<body>
+<main>
+<h1>Générateur de fractionné</h1>
+
+<div class="card">
+  <div class="seg" id="seg">
+    <button data-t="normal" aria-pressed="false">Normal</button>
+    <button data-t="pyramide" aria-pressed="true">Pyramide</button>
+    <button data-t="descendant" aria-pressed="false">Descendant</button>
+    <button data-t="ascendant" aria-pressed="false">Ascendant</button>
+  </div>
+  <div class="grid">
+    <label>Unité des efforts
+      <select id="unit"><option value="m">Distance (m)</option><option value="s">Temps (s)</option></select>
+    </label>
+    <label>Allure cible (min/km)<input id="pace" placeholder="ex. 4:30" inputmode="numeric"></label>
+    <label class="n">Répétitions<input id="reps" type="number" min="1" value="8"></label>
+    <label class="n">Valeur de l’effort<input id="val" type="number" min="1" value="400"></label>
+    <label class="r hide">Plus court<input id="min" type="number" min="1" value="200"></label>
+    <label class="r hide">Plus long<input id="max" type="number" min="1" value="600"></label>
+    <label class="r hide">Pas<input id="step" type="number" min="1" value="200"></label>
+    <label>Récupération (s)<input id="rec" type="number" min="0" value="90"></label>
+    <label>Nombre de séries<input id="sets" type="number" min="1" max="20" value="1"></label>
+    <label>Récup entre séries (s)<input id="srec" type="number" min="0" value="180"></label>
+    <label>Échauffement (min)<input id="wu" type="number" min="0" value="15"></label>
+    <label>Retour au calme (min)<input id="cd" type="number" min="0" value="10"></label>
+  </div>
+</div>
+
+<div class="card">
+  <div id="bars" aria-label="Profil de la séance"></div>
+  <div id="sum"></div>
+  <p class="note" id="est"></p>
+</div>
+
+<div class="card"><h2>Étapes</h2><p class="note" style="margin-bottom:8px">Modifie chaque étape : distance (m) ou durée (s), et allure des efforts. Changer les réglages du haut régénère la séance.</p><ol id="list"></ol></div>
+<div class="button garmin"><p class="Garmin" style="margin-bottom:8px">
+<button class="copy" id="send-garmin" style="background:#df5320; margin-top: 8px;">Envoyer à Garmin Connect</button>
+</div>
+<div class="card">
+  <h2>Séance (JSON)</h2>
+  <textarea id="json" readonly></textarea>
+  <button class="copy" id="copy">Copier le JSON</button>
+  <p class="note" id="msg" style="margin-top:8px">Étape suivante : envoi vers Garmin Connect.</p>
+c
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+let type="pyramide";
+const DEF={m:{val:400,min:200,max:600,step:200},s:{val:60,min:30,max:90,step:30}};
+const mmss=s=>{s=Math.round(s);return Math.floor(s/60)+":"+String(s%60).padStart(2,"0")};
+const dur=s=>{s=Math.round(s);const h=Math.floor(s/3600),m=Math.floor(s%3600/60);return h?h+" h "+String(m).padStart(2,"0"):m+" min"};
+const parsePace=t=>{const m=/^(\d+):(\d{2})$/.exec(t.trim());return m?+m[1]*60+ +m[2]:null};
+
+function values(){
+  const n=+$("reps").value,v=+$("val").value,lo=+$("min").value,hi=+$("max").value,st=Math.max(1,+$("step").value);
+  if(type==="normal")return n>0&&v>0?Array(Math.min(n,60)).fill(v):[];
+  const up=[];for(let x=lo,i=0;x<=hi&&i<60;x+=st,i++)up.push(x);
+  if(type==="pyramide")return up.concat(up.slice(0,-1).reverse());
+  return type==="descendant"?up.slice().reverse():up;
+}
+function steps(){
+  const u=$("unit").value,vs=values(),rec=+$("rec").value,wu=+$("wu").value*60,cd=+$("cd").value*60,pace=parsePace($("pace").value);
+  const out=[];
+  if(wu>0)out.push({type:"warmup",kind:"time",value:wu});
+  const ns=Math.min(Math.max(1,Math.round(+$("sets").value)||1),20),sr=+$("srec").value;
+  for(let k=0;k<ns;k++){
+  if(k>0&&sr>0)out.push({type:"recovery",kind:"time",value:sr});
+  vs.forEach((x,i)=>{
+    const s={type:"interval",kind:u==="m"?"distance":"time",value:x};
+    if(pace)s.paceSecPerKm=pace;
+    out.push(s);
+    if(i<vs.length-1&&rec>0)out.push({type:"recovery",kind:"time",value:rec});
+  });}
+  if(cd>0)out.push({type:"cooldown",kind:"time",value:cd});
+  return out;
+}
+const NAMES={warmup:"Échauffement",interval:"Effort",recovery:"Récupération",cooldown:"Retour au calme"};
+const H={warmup:38,cooldown:38,recovery:20,interval:100};
+
+let S=[];
+function regen(){S=steps();listUI();render()}
+function listUI(){
+  if(!S.length){$("list").innerHTML="<li>Aucun palier : vérifie les valeurs saisies.</li>";return}
+  $("list").innerHTML=S.map((x,i)=>{
+    const u=x.kind==="distance"?"m":"s";
+    const p=x.type==="interval"?`<input class="pc" data-i="${i}" data-f="pace" placeholder="4:30" value="${x.paceSecPerKm?mmss(x.paceSecPerKm):""}" aria-label="Allure de l’effort"><small>/km</small>`:"";
+    return `<li class="${x.type}"><span class="nm">${NAMES[x.type]}</span><input type="number" min="1" data-i="${i}" data-f="value" value="${x.value}" aria-label="${NAMES[x.type]}"><small>${u}</small>${p}<button class="del" data-i="${i}" aria-label="Supprimer l’étape">×</button></li>`;
+  }).join("");
+}
+function render(){
+  const s=S,pace=parsePace($("pace").value),iv=s.filter(x=>x.type==="interval");
+  if(!iv.length){$("bars").innerHTML="";$("sum").textContent="";$("est").textContent="";$("list").innerHTML="<li>Aucun palier : vérifie les valeurs saisies.</li>";$("json").value="";return}
+  const d=x=>x.kind==="time"?x.value:x.value/1000*(x.paceSecPerKm||pace||300);
+  const tot=s.reduce((a,x)=>a+d(x),0);
+  $("bars").innerHTML=s.map(x=>`<i class="${x.type}" style="flex:${d(x)} 1 0;height:${H[x.type]}%"></i>`).join("");
+  let km=null;
+  if($("unit").value==="m")km=iv.reduce((a,x)=>a+x.value,0)/1000;
+  else if(iv.every(x=>x.paceSecPerKm||pace))km=iv.reduce((a,x)=>a+x.value/(x.paceSecPerKm||pace),0);
+  $("sum").textContent=iv.length+" efforts"+(km!==null?" · "+km.toFixed(2).replace(".",",")+" km d’effort":"")+" · "+dur(tot);
+  $("est").textContent=(!pace&&$("unit").value==="m")?"Durée estimée sur une base de 5:00/km. Renseigne l’allure cible pour l’affiner.":"";
+  const label={normal:"Fractionné",pyramide:"Pyramide",descendant:"Fractionné descendant",ascendant:"Fractionné ascendant"}[type];
+  $("json").value=JSON.stringify({name:label+" "+iv.length+" efforts",steps:s},null,2);
+}
+
+$("send-garmin").onclick = async () => {
+  const jsonText = $("json").value;
+  if (!jsonText) return;
+
+  $("msg").textContent = "Envoi en cours vers Garmin...";
+  
+  try {
+    const response = await fetch("/api/send-to-garmin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: jsonText
+    });
+    const result = await response.json();
+    if (result.success) {
+      $("msg").textContent = "✅ Séance envoyée avec succès ! Synchronise ta montre.";
+    } else {
+      $("msg").textContent = "❌ Erreur : " + result.error;
+    }
+  } catch (err) {
+    $("msg").textContent = "❌ Erreur réseau lors de l'envoi.";
+  }
+};
+
+document.querySelectorAll("#seg button").forEach(b=>b.onclick=()=>{
+  type=b.dataset.t;
+  document.querySelectorAll("#seg button").forEach(x=>x.setAttribute("aria-pressed",x===b));
+  document.querySelectorAll(".n").forEach(e=>e.classList.toggle("hide",type!=="normal"));
+  document.querySelectorAll(".r").forEach(e=>e.classList.toggle("hide",type==="normal"));
+  regen();
+});
+$("unit").onchange=()=>{const d=DEF[$("unit").value];for(const k in d)$(k).value=d[k];regen()};
+document.querySelectorAll("input").forEach(i=>i.oninput=regen);
+$("copy").onclick=async()=>{
+  try{await navigator.clipboard.writeText($("json").value);$("msg").textContent="JSON copié."}
+  catch(e){$("json").select();$("msg").textContent="Sélectionné : copie-le avec Ctrl+C."}
+};
+document.querySelectorAll(".n").forEach(e=>e.classList.add("hide"));
+document.querySelectorAll(".r").forEach(e=>e.classList.remove("hide"));
+$("list").oninput=e=>{
+  const t=e.target,i=+t.dataset.i;if(!S[i])return;
+  if(t.dataset.f==="value"){const v=+t.value;if(v>0)S[i].value=v}
+  else{const p=parsePace(t.value);if(p)S[i].paceSecPerKm=p;else delete S[i].paceSecPerKm}
+  render();
+};
+$("list").onclick=e=>{const b=e.target.closest(".del");if(b){S.splice(+b.dataset.i,1);listUI();render()}};
+regen();
+</script>
+</body>
+</html>
