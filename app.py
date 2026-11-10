@@ -1,36 +1,9 @@
 import os
-from flask import Flask, request, jsonify, render_template
+import io
+from flask import Flask, request, jsonify, render_template, send_file
 from garminconnect import Garmin
 import garth
 from fit_tool.fit_file_builder import FitFileBuilder
-from flask import send_file
-import io
-
-@app.route("/api/export-fit", methods=["POST"])
-def export_fit():
-    data = request.json
-    workout_name = data.get("name", "Séance Fractionnée")
-    steps = data.get("steps", [])
-
-    # Utilisation de fit-tool pour construire le fichier .fit de manière structurée
-    builder = FitFileBuilder(auto_define=True, porcine=False)
-    
-    # Construction basique d'un fichier d'entraînement .fit
-    # (Ici on encapsule le nom et les métadonnées de la séance)
-    
-    # Génération du fichier binaire en mémoire
-    fit_file = builder.build()
-    output = io.BytesIO()
-    fit_file.to_file(output)
-    output.seek(0)
-
-    filename = f"{workout_name.replace(' ', '_')}.fit"
-    return send_file(
-        output,
-        mimetype="application/octet-stream",
-        as_attachment=True,
-        download_name=filename
-    )
 
 app = Flask(__name__)
 
@@ -113,6 +86,26 @@ def send_to_garmin():
         if "MFA" in err_msg or "mfa" in err_msg:
             return jsonify({"success": False, "mfa_required": True, "error": "Code MFA requis par Garmin."}), 401
         return jsonify({"success": False, "error": err_msg}), 400
+
+@app.route("/api/export-fit", methods=["POST"])
+def export_fit():
+    data = request.json
+    workout_name = data.get("name", "Séance Fractionnée")
+    
+    builder = FitFileBuilder(auto_define=True, porcine=False)
+    fit_file = builder.build()
+    
+    output = io.BytesIO()
+    fit_file.to_file(output)
+    output.seek(0)
+
+    filename = f"{workout_name.replace(' ', '_')}.fit"
+    return send_file(
+        output,
+        mimetype="application/octet-stream",
+        as_attachment=True,
+        download_name=filename
+    )
 
 if __name__ == "__main__":
     app.run(debug=True)
