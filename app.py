@@ -1,6 +1,7 @@
 
 import os
 import tempfile
+import math
 
 from flask import Flask, request, jsonify, render_template, send_file
 from garminconnect import Garmin
@@ -25,6 +26,7 @@ def index():
 # --------------------------------------------------
 
 def build_garmin_steps(raw_steps):
+
     formatted_steps = []
 
     step_types = {
@@ -35,22 +37,31 @@ def build_garmin_steps(raw_steps):
     }
 
     for index, step in enumerate(raw_steps, start=1):
+
         step_type = step.get("type", "interval")
         kind = step.get("kind", "time")
 
         if step_type not in step_types:
-            raise ValueError(f"Type d'étape inconnu : {step_type}")
+            raise ValueError(
+                f"Type d'étape inconnu : {step_type}"
+            )
 
         if kind not in ("time", "distance"):
-            raise ValueError(f"Type de durée inconnu : {kind}")
+            raise ValueError(
+                f"Type de durée inconnu : {kind}"
+            )
 
         try:
             value = float(step.get("value", 0))
         except (TypeError, ValueError):
-            raise ValueError(f"Valeur invalide à l'étape {index}")
+            raise ValueError(
+                f"Valeur invalide à l'étape {index}"
+            )
 
-        if value <= 0:
-            raise ValueError(f"La valeur de l'étape {index} doit être positive.")
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(
+                f"La valeur de l'étape {index} doit être positive."
+            )
 
         step_type_id, step_type_key, display_order = step_types[step_type]
 
@@ -63,27 +74,115 @@ def build_garmin_steps(raw_steps):
             condition_key = "distance"
             condition_order = 3
 
-        formatted_steps.append({
+        # Cible par défaut : aucune cible
+        target_type = {
+            "workoutTargetTypeId": 1,
+            "workoutTargetTypeKey": "no.target",
+            "displayOrder": 1
+        }
+
+        extra_target_fields = {}
+
+        # ------------------------------------------
+        # CIBLE D'ALLURE POUR LES EFFORTS
+        # ------------------------------------------
+
+        if step_type == "interval":
+
+            pace_min_raw = step.get("paceMinSecPerKm")
+            pace_max_raw = step.get("paceMaxSecPerKm")
+
+            has_min = pace_min_raw is not None and pace_min_raw != ""
+            has_max = pace_max_raw is not None and pace_max_raw != ""
+
+            # Les deux bornes doivent être renseignées
+            # ou aucune des deux.
+            if has_min != has_max:
+                raise ValueError(
+                    f"Les deux bornes d'allure doivent être renseignées "
+                    f"à l'étape {index}."
+                )
+
+            if has_min and has_max:
+
+                try:
+                    pace_min = float(pace_min_raw)
+                    pace_max = float(pace_max_raw)
+
+                except (TypeError, ValueError):
+                    raise ValueError(
+                        f"Allure invalide à l'étape {index}."
+                    )
+
+                if (
+                    not math.isfinite(pace_min)
+                    or not math.isfinite(pace_max)
+                    or pace_min <= 0
+                    or pace_max <= 0
+                ):
+                    raise ValueError(
+                        f"Les allures de l'étape {index} "
+                        f"doivent être positives."
+                    )
+
+                if pace_min > pace_max:
+                    raise ValueError(
+                        f"L'allure minimale doit être inférieure "
+                        f"ou égale à l'allure maximale à l'étape {index}."
+                    )
+
+                # Garmin attend des mètres par seconde.
+                #
+                # pace_min = allure la plus rapide
+                # pace_max = allure la plus lente
+                #
+                # La vitesse la plus lente est donc
+                # la valeur numérique la plus petite.
+
+                speed_min = 1000.0 / pace_max
+                speed_max = 1000.0 / pace_min
+
+                target_type = {
+                    "workoutTargetTypeId": 6,
+                    "workoutTargetTypeKey": "pace.zone",
+                    "displayOrder": 1
+                }
+
+                extra_target_fields = {
+                    "targetValueOne": speed_min,
+                    "targetValueTwo": speed_max
+                }
+
+        # ------------------------------------------
+        # ETAPE GARMIN
+        # ------------------------------------------
+
+        formatted_step = {
             "type": "ExecutableStepDTO",
             "stepOrder": index,
+
             "stepType": {
                 "stepTypeId": step_type_id,
                 "stepTypeKey": step_type_key,
                 "displayOrder": display_order
             },
+
             "endCondition": {
                 "conditionTypeId": condition_id,
                 "conditionTypeKey": condition_key,
                 "displayOrder": condition_order,
                 "displayable": True
             },
+
             "endConditionValue": value,
-            "targetType": {
-                "workoutTargetTypeId": 1,
-                "workoutTargetTypeKey": "no.target",
-                "displayOrder": 1
-            }
-        })
+
+            "targetType": target_type
+        }
+
+        # Ajout des bornes d'allure si elles existent.
+        formatted_step.update(extra_target_fields)
+
+        formatted_steps.append(formatted_step)
 
     return formatted_steps
 
@@ -116,6 +215,8 @@ def send_to_garmin():
         }), 400
 
     try:
+
+        # Construction des étapes et de leurs cibles
         formatted_steps = build_garmin_steps(raw_steps)
 
         sport_type = {
@@ -134,6 +235,7 @@ def send_to_garmin():
             "workoutName": workout_name,
             "sportType": sport_type,
             "estimatedDurationInSecs": int(estimated_duration),
+
             "workoutSegments": [
                 {
                     "segmentOrder": 1,
@@ -147,7 +249,7 @@ def send_to_garmin():
         client = Garmin(email, password)
         client.login()
 
-        # Envoi avec la méthode de garminconnect 0.3.20
+        # Envoi de la séance
         result = client.upload_workout(workout_payload)
 
         if not isinstance(result, dict):
@@ -160,26 +262,44 @@ def send_to_garmin():
         if not workout_id:
             return jsonify({
                 "success": False,
-                "error": "Garmin n'a pas retourné d'identifiant de séance. "
-                         "L'envoi n'a pas pu être confirmé.",
+                "error": (
+                    "Garmin n'a pas retourné d'identifiant de séance. "
+                    "L'envoi n'a pas pu être confirmé."
+                ),
                 "garmin_response": result
             }), 502
 
-        # Vérification : on relit la séance dans Garmin Connect
+        # Vérification de la présence dans Garmin Connect
         saved_workout = client.get_workout_by_id(workout_id)
 
-        if not saved_workout or str(saved_workout.get("workoutId")) != str(workout_id):
+        if (
+            not saved_workout
+            or str(saved_workout.get("workoutId")) != str(workout_id)
+        ):
             return jsonify({
                 "success": False,
-                "error": "La séance a été envoyée, mais sa présence "
-                         "dans Garmin Connect n'a pas pu être vérifiée.",
+                "error": (
+                    "La séance a été envoyée, mais sa présence "
+                    "dans Garmin Connect n'a pas pu être vérifiée."
+                ),
                 "workout_id": workout_id
             }), 502
+
+        # Nombre de fractions comportant une cible d'allure
+        pace_targets_count = sum(
+            1 for step in raw_steps
+            if (
+                step.get("type") == "interval"
+                and step.get("paceMinSecPerKm") is not None
+                and step.get("paceMaxSecPerKm") is not None
+            )
+        )
 
         return jsonify({
             "success": True,
             "message": "Séance envoyée et vérifiée dans Garmin Connect !",
-            "workout_id": workout_id
+            "workout_id": workout_id,
+            "pace_targets_sent": pace_targets_count
         })
 
     except Exception as e:
@@ -193,7 +313,9 @@ def send_to_garmin():
                 "error": "Garmin demande un code de vérification."
             }), 401
 
-        app.logger.exception("Erreur lors de l'envoi vers Garmin")
+        app.logger.exception(
+            "Erreur lors de l'envoi vers Garmin"
+        )
 
         return jsonify({
             "success": False,
@@ -209,6 +331,7 @@ def send_to_garmin():
 def export_fit():
 
     try:
+
         data = request.get_json(silent=True) or {}
 
         workout_name = data.get("name", "Séance Fractionnée")
@@ -275,7 +398,9 @@ def export_fit():
 
     except Exception as e:
 
-        app.logger.exception("Erreur lors de la génération du fichier FIT")
+        app.logger.exception(
+            "Erreur lors de la génération du fichier FIT"
+        )
 
         return jsonify({
             "success": False,
