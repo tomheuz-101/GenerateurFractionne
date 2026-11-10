@@ -80,8 +80,9 @@ h2{font:700 20px "Barlow Condensed",sans-serif;margin:0 0 8px}
 </div>
 
 <div class="card"><h2>Étapes</h2><p class="note" style="margin-bottom:8px">Modifie chaque étape : distance (m) ou durée (s), et allure des efforts. Changer les réglages du haut régénère la séance.</p><ol id="list"></ol></div>
-<div class="button garmin"><p class="Garmin" style="margin-bottom:8px">
-<button class="copy" id="send-garmin" style="background:#df5320; margin-top: 8px;">Envoyer à Garmin Connect</button>
+<div class="card" style="padding: 10px;">
+  <button class="copy" id="send-garmin" style="background:#df5320; width:100%; margin-bottom:8px;">Envoyer à Garmin Connect</button>
+  <button class="copy" id="exportFitBtn" style="background:#16a34a; width:100%;">Télécharger le fichier .fit</button>
 </div>
 <div class="card">
   <h2>Séance (JSON)</h2>
@@ -149,6 +150,35 @@ function render(){
   const label={normal:"Fractionné",pyramide:"Pyramide",descendant:"Fractionné descendant",ascendant:"Fractionné ascendant"}[type];
   $("json").value=JSON.stringify({name:label+" "+iv.length+" efforts",steps:s},null,2);
 }
+
+document.getElementById('exportFitBtn').addEventListener('click', async () => {
+    const label = {normal:"Fractionné", pyramide:"Pyramide", descendant:"Fractionné descendant", ascendant:"Fractionné ascendant"}[type];
+    const iv = S.filter(x => x.type === "interval");
+    
+    const workoutData = {
+        name: label + " " + iv.length + " efforts",
+        steps: S
+    };
+
+    const response = await fetch('/api/export-fit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(workoutData)
+    });
+
+    if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${workoutData.name}.fit`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    } else {
+        alert("Erreur lors de la génération du fichier .fit");
+    }
+});
 
 $("send-garmin").onclick = async () => {
   const jsonText = $("json").value;
