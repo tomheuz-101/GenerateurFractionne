@@ -16,7 +16,7 @@ def index():
 def send_to_garmin():
     data = request.json
     
-    # Récupération sécurisée depuis le JSON envoyé par le front (ou les variables d'environnement)
+    # Récupération des identifiants (via la requête ou les variables d'environnement Render)
     email = data.get("email") or os.environ.get("GARMIN_EMAIL")
     password = data.get("password") or os.environ.get("GARMIN_PASSWORD")
     
@@ -28,15 +28,14 @@ def send_to_garmin():
         return jsonify({"success": False, "error": "Identifiants Garmin manquants."}), 400
 
     try:
-        # Suite de ton code de connexion...
-        # Connexion à Garmin Connect
-        # Astuce : Pour éviter les blocages de captcha/MFA répétés, garth/garminconnect 
-        # permet de sauvegarder les tokens de session.
-        client = Garmin(EMAIL, PASSWORD)
-        client.login()
+        # Connexion au client Garmin
+        client = Garmin(email, password)
+        if mfa_code:
+            client.login(mfa_code)
+        else:
+            client.login()
 
-        # Formatage et envoi de l'entraînement via l'API Garmin Connect
-        # (L'API interne de Garmin utilise un format JSON spécifique pour les workouts)
+        # Construction du payload adapté à l'API d'entraînement Garmin
         workout_payload = {
             "workoutName": workout_name,
             "sportType": {"sportTypeId": 1, "sportKey": "running"},
@@ -44,17 +43,17 @@ def send_to_garmin():
                 {
                     "segmentOrder": 1,
                     "sportType": {"sportTypeId": 1, "sportKey": "running"},
-                    "workoutSteps": convert_steps_to_garmin(steps)
+                    "workoutSteps": steps
                 }
             ]
         }
 
-        # Appel de l'API Garmin Connect pour créer l'entraînement
-        # Remplacement de l'appel erroné
+        # Envoi de l'entraînement via l'endpoint officiel Garmin
         client.connectapi("workout-service/workout", json=workout_payload)
+        return jsonify({"success": True, "message": "Entraînement envoyé avec succès !" })
 
-        return jsonify({"success": True, "message": "Entraînement envoyé avec succès sur Garmin Connect !" })
-
+    except garth.exceptions.MFAError:
+        return jsonify({"success": False, "mfa_required": True, "error": "Code MFA requis."}), 401
     except Exception as e:
         return jsonify({"success": False, "error": str(e)}), 400
 
