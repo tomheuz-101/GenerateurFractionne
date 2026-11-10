@@ -87,6 +87,8 @@ def send_to_garmin():
             return jsonify({"success": False, "mfa_required": True, "error": "Code MFA requis par Garmin."}), 401
         return jsonify({"success": False, "error": err_msg}), 400
 
+import tempfile
+
 @app.route("/api/export-fit", methods=["POST"])
 def export_fit():
     try:
@@ -97,13 +99,15 @@ def export_fit():
         builder = FitFileBuilder(auto_define=True)
         fit_file = builder.build()
         
-        output = io.BytesIO()
-        fit_file.to_file(output)
-        output.seek(0)
+        # Création d'un fichier temporaire pour que fit-tool puisse y écrire son chemin
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".fit") as tmp:
+            tmp_path = tmp.name
+            
+        fit_file.to_file(tmp_path)
 
         filename = f"{workout_name.replace(' ', '_')}.fit"
         return send_file(
-            output,
+            tmp_path,
             mimetype="application/octet-stream",
             as_attachment=True,
             download_name=filename
