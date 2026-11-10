@@ -4,13 +4,21 @@ import tempfile
 import math
 
 from flask import Flask, request, jsonify, render_template, send_file
+from werkzeug.utils import secure_filename
 from garminconnect import Garmin
 
 from fit_tool.fit_file_builder import FitFileBuilder
 from fit_tool.profile.messages.file_id_message import FileIdMessage
 from fit_tool.profile.messages.workout_message import WorkoutMessage
 from fit_tool.profile.messages.workout_step_message import WorkoutStepMessage
-from fit_tool.profile.profile_type import FileType, Manufacturer, Sport, Intensity
+from fit_tool.profile.profile_type import (
+    FileType,
+    Manufacturer,
+    Sport,
+    Intensity,
+    WorkoutStepDuration,
+    WorkoutStepTarget,
+)
 
 
 app = Flask(__name__)
@@ -22,7 +30,7 @@ def index():
 
 
 # --------------------------------------------------
-# CONSTRUCTION DES ETAPES GARMIN
+# CONSTRUCTION DES ETAPES GARMIN CONNECT
 # --------------------------------------------------
 
 def build_garmin_steps(raw_steps):
@@ -74,7 +82,6 @@ def build_garmin_steps(raw_steps):
             condition_key = "distance"
             condition_order = 3
 
-        # Cible par défaut : aucune cible
         target_type = {
             "workoutTargetTypeId": 1,
             "workoutTargetTypeKey": "no.target",
@@ -82,10 +89,6 @@ def build_garmin_steps(raw_steps):
         }
 
         extra_target_fields = {}
-
-        # ------------------------------------------
-        # CIBLE D'ALLURE POUR LES EFFORTS
-        # ------------------------------------------
 
         if step_type == "interval":
 
@@ -95,8 +98,6 @@ def build_garmin_steps(raw_steps):
             has_min = pace_min_raw is not None and pace_min_raw != ""
             has_max = pace_max_raw is not None and pace_max_raw != ""
 
-            # Les deux bornes doivent être renseignées
-            # ou aucune des deux.
             if has_min != has_max:
                 raise ValueError(
                     f"Les deux bornes d'allure doivent être renseignées "
@@ -108,7 +109,6 @@ def build_garmin_steps(raw_steps):
                 try:
                     pace_min = float(pace_min_raw)
                     pace_max = float(pace_max_raw)
-
                 except (TypeError, ValueError):
                     raise ValueError(
                         f"Allure invalide à l'étape {index}."
@@ -131,14 +131,6 @@ def build_garmin_steps(raw_steps):
                         f"ou égale à l'allure maximale à l'étape {index}."
                     )
 
-                # Garmin attend des mètres par seconde.
-                #
-                # pace_min = allure la plus rapide
-                # pace_max = allure la plus lente
-                #
-                # La vitesse la plus lente est donc
-                # la valeur numérique la plus petite.
-
                 speed_min = 1000.0 / pace_max
                 speed_max = 1000.0 / pace_min
 
@@ -152,10 +144,6 @@ def build_garmin_steps(raw_steps):
                     "targetValueOne": speed_min,
                     "targetValueTwo": speed_max
                 }
-
-        # ------------------------------------------
-        # ETAPE GARMIN
-        # ------------------------------------------
 
         formatted_step = {
             "type": "ExecutableStepDTO",
@@ -175,13 +163,10 @@ def build_garmin_steps(raw_steps):
             },
 
             "endConditionValue": value,
-
             "targetType": target_type
         }
 
-        # Ajout des bornes d'allure si elles existent.
         formatted_step.update(extra_target_fields)
-
         formatted_steps.append(formatted_step)
 
     return formatted_steps
@@ -216,7 +201,6 @@ def send_to_garmin():
 
     try:
 
-        # Construction des étapes et de leurs cibles
         formatted_steps = build_garmin_steps(raw_steps)
 
         sport_type = {
@@ -245,11 +229,9 @@ def send_to_garmin():
             ]
         }
 
-        # Connexion à Garmin
         client = Garmin(email, password)
         client.login()
 
-        # Envoi de la séance
         result = client.upload_workout(workout_payload)
 
         if not isinstance(result, dict):
@@ -269,7 +251,6 @@ def send_to_garmin():
                 "garmin_response": result
             }), 502
 
-        # Vérification de la présence dans Garmin Connect
         saved_workout = client.get_workout_by_id(workout_id)
 
         if (
@@ -285,7 +266,6 @@ def send_to_garmin():
                 "workout_id": workout_id
             }), 502
 
-        # Nombre de fractions comportant une cible d'allure
         pace_targets_count = sum(
             1 for step in raw_steps
             if (
@@ -324,58 +304,254 @@ def send_to_garmin():
 
 
 # --------------------------------------------------
+# VALIDATION DES ETAPES POUR LE FORMAT FIT
+# --------------------------------------------------
+
+def validate_fit_steps(steps):
+
+    if not isinstance(steps, list) or not steps:
+        raise ValueError(
+            "La séance ne contient aucune étape."
+        )
+
+    if len(steps) > 200:
+        raise ValueError(
+            "La séance contient trop d'étapes (maximum 200)."
+        )
+
+    valid_types = {
+        "warmup",
+        "interval",
+        "recovery",
+        "cooldown"
+    }
+
+    valid_kinds = {
+        "time",
+        "distance"
+    }
+
+    validated = []
+
+    for index, step in enumerate(steps, start=1):
+
+        if not isinstance(step, dict):
+            raise ValueError(
+                f"Format incorrect à l'étape {index}."
+            )
+
+        step_type = step.get("type")
+        kind = step.get("kind")
+
+        if step_type not in valid_types:
+            raise ValueError(
+                f"Type d'étape inconnu à l'étape {index}."
+            )
+
+        if kind not in valid_kinds:
+            raise ValueError(
+                f"Type de durée inconnu à l'étape {index}."
+            )
+
+        try:
+            value = float(step.get("value"))
+        except (TypeError, ValueError):
+            raise ValueError(
+                f"Valeur invalide à l'étape {index}."
+            )
+
+        if not math.isfinite(value) or value <= 0:
+            raise ValueError(
+                f"La valeur de l'étape {index} doit être positive."
+            )
+
+        pace_min_raw = step.get("paceMinSecPerKm")
+        pace_max_raw = step.get("paceMaxSecPerKm")
+
+        has_min = pace_min_raw is not None and pace_min_raw != ""
+        has_max = pace_max_raw is not None and pace_max_raw != ""
+
+        if step_type != "interval" and (has_min or has_max):
+            raise ValueError(
+                f"Une cible d'allure ne peut être définie "
+                f"que sur un effort (étape {index})."
+            )
+
+        pace_min = None
+        pace_max = None
+
+        if has_min != has_max:
+            raise ValueError(
+                f"Les deux bornes d'allure doivent être renseignées "
+                f"à l'étape {index}."
+            )
+
+        if has_min and has_max:
+
+            try:
+                pace_min = float(pace_min_raw)
+                pace_max = float(pace_max_raw)
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"Allure invalide à l'étape {index}."
+                )
+
+            if (
+                not math.isfinite(pace_min)
+                or not math.isfinite(pace_max)
+                or pace_min <= 0
+                or pace_max <= 0
+            ):
+                raise ValueError(
+                    f"Les allures de l'étape {index} "
+                    f"doivent être positives."
+                )
+
+            if pace_min > pace_max:
+                raise ValueError(
+                    f"L'allure minimale doit être inférieure "
+                    f"ou égale à l'allure maximale à l'étape {index}."
+                )
+
+        validated.append({
+            "type": step_type,
+            "kind": kind,
+            "value": value,
+            "pace_min": pace_min,
+            "pace_max": pace_max
+        })
+
+    return validated
+
+
+# --------------------------------------------------
 # EXPORT AU FORMAT FIT
 # --------------------------------------------------
 
 @app.route("/api/export-fit", methods=["POST"])
 def export_fit():
 
+    tmp_path = None
+
     try:
 
         data = request.get_json(silent=True) or {}
 
-        workout_name = data.get("name", "Séance Fractionnée")
-        steps = data.get("steps", [])
+        workout_name = str(
+            data.get("name") or "Séance Fractionnée"
+        ).strip()
 
-        if not isinstance(steps, list) or not steps:
-            return jsonify({
-                "success": False,
-                "error": "La séance ne contient aucune étape."
-            }), 400
+        if not workout_name:
+            workout_name = "Séance Fractionnée"
+
+        raw_steps = data.get("steps", [])
+        steps = validate_fit_steps(raw_steps)
 
         builder = FitFileBuilder(auto_define=True)
 
         # 1. Identifiant du fichier
+
         file_id = FileIdMessage()
         file_id.type = FileType.WORKOUT
         file_id.manufacturer = Manufacturer.DEVELOPMENT.value
         file_id.product = 0
         file_id.serial_number = 12345
+
         builder.add(file_id)
 
         # 2. Entraînement
+
         workout_msg = WorkoutMessage()
         workout_msg.wkt_name = workout_name
         workout_msg.sport = Sport.RUNNING
         workout_msg.num_valid_steps = len(steps)
+
         builder.add(workout_msg)
 
         # 3. Étapes
+
+        names = {
+            "warmup": "Échauffement",
+            "interval": "Effort",
+            "recovery": "Récupération",
+            "cooldown": "Retour au calme"
+        }
+
+        intensities = {
+            "warmup": Intensity.WARMUP,
+            "interval": Intensity.ACTIVE,
+            "recovery": Intensity.RECOVERY,
+            "cooldown": Intensity.COOLDOWN
+        }
+
+        pace_targets_count = 0
+
         for index, step in enumerate(steps):
 
             step_msg = WorkoutStepMessage()
+
             step_msg.message_index = index
-            step_msg.wkt_step_name = step.get("type", "interval")
-            step_msg.intensity = Intensity.ACTIVE
+            step_msg.intensity = intensities[step["type"]]
 
-            duration_val = float(step.get("value", 0))
+            # Nom lisible de l'étape
 
-            if step.get("kind") == "time":
-                step_msg.duration_time = duration_val * 1000
+            if step["kind"] == "time":
+                detail = f'{step["value"]:g} s'
             else:
-                step_msg.duration_distance = duration_val * 1000
+                detail = f'{step["value"]:g} m'
+
+            step_msg.wkt_step_name = (
+                f'{names[step["type"]]} {detail}'
+            )
+
+            # Durée ou distance
+            # IMPORTANT : les valeurs sont exprimées directement
+            # en secondes et en mètres. fit-tool effectue la conversion.
+
+            if step["kind"] == "time":
+
+                step_msg.duration_type = WorkoutStepDuration.TIME
+                step_msg.duration_time = step["value"]
+
+            else:
+
+                step_msg.duration_type = WorkoutStepDuration.DISTANCE
+                step_msg.duration_distance = step["value"]
+
+            # Cible par défaut : aucune cible
+
+            step_msg.target_type = WorkoutStepTarget.OPEN
+            step_msg.target_value = 0
+
+            # Cible d'allure sur les efforts uniquement
+
+            if (
+                step["type"] == "interval"
+                and step["pace_min"] is not None
+                and step["pace_max"] is not None
+            ):
+
+                # FIT attend des vitesses en mètres par seconde.
+                #
+                # pace_min = allure la plus rapide
+                # pace_max = allure la plus lente
+                #
+                # La limite basse correspond donc à pace_max.
+
+                speed_low = 1000.0 / step["pace_max"]
+                speed_high = 1000.0 / step["pace_min"]
+
+                step_msg.target_type = WorkoutStepTarget.SPEED
+                step_msg.target_value = 0
+
+                step_msg.custom_target_speed_low = speed_low
+                step_msg.custom_target_speed_high = speed_high
+
+                pace_targets_count += 1
 
             builder.add(step_msg)
+
+        # 4. Génération du fichier FIT
 
         fit_file = builder.build()
 
@@ -383,20 +559,46 @@ def export_fit():
             delete=False,
             suffix=".fit"
         ) as tmp:
+
             tmp_path = tmp.name
 
         fit_file.to_file(tmp_path)
 
-        filename = f"{workout_name.replace(' ', '_')}.fit"
+        safe_name = secure_filename(workout_name)
+        if not safe_name:
+            safe_name = "seance_fractionnee"
 
-        return send_file(
+        filename = f"{safe_name}.fit"
+
+        response = send_file(
             tmp_path,
             mimetype="application/octet-stream",
             as_attachment=True,
             download_name=filename
         )
 
+        # Suppression du fichier temporaire après téléchargement
+
+        response.call_on_close(
+            lambda: (
+                os.remove(tmp_path)
+                if tmp_path and os.path.exists(tmp_path)
+                else None
+            )
+        )
+
+        app.logger.info(
+            "Export FIT généré : %s étapes, %s cibles d'allure",
+            len(steps),
+            pace_targets_count
+        )
+
+        return response
+
     except Exception as e:
+
+        if tmp_path and os.path.exists(tmp_path):
+            os.remove(tmp_path)
 
         app.logger.exception(
             "Erreur lors de la génération du fichier FIT"
