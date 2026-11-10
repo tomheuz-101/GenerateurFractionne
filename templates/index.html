@@ -166,7 +166,7 @@ document.getElementById('exportFitBtn').addEventListener('click', async () => {
         body: JSON.stringify(workoutData)
     });
 
-    if (response.ok) {
+   if (response.ok) {
         const blob = await response.blob();
         const url = window.URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -176,7 +176,8 @@ document.getElementById('exportFitBtn').addEventListener('click', async () => {
         a.click();
         a.remove();
     } else {
-        alert("Erreur lors de la génération du fichier .fit");
+        const errJson = await response.json();
+        alert("Erreur .fit : " + (errJson.error || "Inconnue"));
     }
 });
 
