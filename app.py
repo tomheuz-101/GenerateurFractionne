@@ -42,11 +42,11 @@ def send_to_garmin():
             ]
         }
 
-       # Utilisation de la méthode request avec le sous-domaine et le path requis
+      # Envoi de la requête POST avec le chemin positionnel direct
         garth.client.request(
             "POST",
             "connect",
-            path="workout-service/workout",
+            "/workout-service/workout",
             json=workout_payload
         )
         
