@@ -46,8 +46,8 @@ def send_to_garmin():
     email = data.get("email") or os.environ.get("GARMIN_EMAIL")
     password = data.get("password") or os.environ.get("GARMIN_PASSWORD")
     
-    workout_name = data.get("name")
-    steps = data.get("steps")
+    workout_name = data.get("name", "Séance Fractionnée")
+    raw_steps = data.get("steps", [])
     mfa_code = data.get("mfa_code")
 
     if not email or not password:
@@ -60,6 +60,42 @@ def send_to_garmin():
         else:
             client.login()
 
+        # Formatage rigoureux des étapes pour l'API Garmin
+        formatted_steps = []
+        for index, step in enumerate(raw_steps, start=1):
+            step_type = step.get("type", "interval")
+            # Mapping des identifiants de type Garmin (3: Warmup, 1: Work/Interval, 4: Cooldown, 2: Recovery)
+            type_id_map = {"warmup": 3, "interval": 1, "recovery": 2, "cooldown": 4}
+            step_type_id = type_id_map.get(step_type, 1)
+
+            duration_val = float(step.get("value", 0))
+            # Si c'est du temps (en secondes) -> conditionTypeId 2. Si distance (en mètres) -> 3.
+            is_distance = step.get("kind") == "distance"
+            condition_type_id = 3 if is_distance else 2
+
+            garmin_step = {
+                "type": "ExecutableStep",
+                "stepOrder": index,
+                "stepType": {
+                    "stepTypeId": step_type_id,
+                    "stepKey": step_type
+                },
+                "childStepId": None,
+                "endCondition": {
+                    "conditionTypeId": condition_type_id,
+                    "conditionKey": step.get("kind", "time")
+                },
+                "targetType": {
+                    "refreshRate": 0,
+                    "workoutTargetTypeId": 1,
+                    "workoutTargetTypeKey": "no.target"
+                },
+                "durationValue": duration_val,
+                "targetValueOne": None,
+                "targetValueTwo": None
+            }
+            formatted_steps.append(garmin_step)
+
         workout_payload = {
             "workoutName": workout_name,
             "sportType": {"sportTypeId": 1, "sportKey": "running"},
@@ -67,7 +103,7 @@ def send_to_garmin():
                 {
                     "segmentOrder": 1,
                     "sportType": {"sportTypeId": 1, "sportKey": "running"},
-                    "workoutSteps": format_garmin_steps(steps)
+                    "workoutSteps": formatted_steps
                 }
             ]
         }
@@ -79,7 +115,7 @@ def send_to_garmin():
             json=workout_payload
         )
         
-        return jsonify({"success": True, "message": "Séance envoyée avec succès ! Synchronise ta montre."})
+        return jsonify({"success": True, "message": "Séance envoyée avec succès sur Garmin Connect !" })
 
     except Exception as e:
         err_msg = str(e)
