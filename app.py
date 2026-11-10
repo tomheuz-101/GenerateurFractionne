@@ -89,23 +89,30 @@ def send_to_garmin():
 
 @app.route("/api/export-fit", methods=["POST"])
 def export_fit():
-    data = request.json
-    workout_name = data.get("name", "Séance Fractionnée")
-    
-    builder = FitFileBuilder(auto_define=True, porcine=False)
-    fit_file = builder.build()
-    
-    output = io.BytesIO()
-    fit_file.to_file(output)
-    output.seek(0)
+    try:
+        data = request.json
+        workout_name = data.get("name", "Séance Fractionnée")
+        steps = data.get("steps", [])
 
-    filename = f"{workout_name.replace(' ', '_')}.fit"
-    return send_file(
-        output,
-        mimetype="application/octet-stream",
-        as_attachment=True,
-        download_name=filename
-    )
+        # Initialisation correcte de FitFileBuilder sans argument superflu
+        builder = FitFileBuilder(auto_define=True)
+        
+        # Construction du fichier .fit
+        fit_file = builder.build()
+        
+        output = io.BytesIO()
+        fit_file.to_file(output)
+        output.seek(0)
+
+        filename = f"{workout_name.replace(' ', '_')}.fit"
+        return send_file(
+            output,
+            mimetype="application/octet-stream",
+            as_attachment=True,
+            download_name=filename
+        )
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(debug=True)
