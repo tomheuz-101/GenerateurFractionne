@@ -50,7 +50,8 @@ def send_to_garmin():
         }
 
         # Appel de l'API Garmin Connect pour créer l'entraînement
-        client.connectapi("workout-service/workout", method="POST", json=workout_payload)
+        # Remplacement de l'appel erroné
+        client.connectapi("workout-service/workout", json=workout_payload)
 
         return jsonify({"success": True, "message": "Entraînement envoyé avec succès sur Garmin Connect !" })
 
