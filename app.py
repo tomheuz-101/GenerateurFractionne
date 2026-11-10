@@ -1,7 +1,7 @@
 import os
 from flask import Flask, request, jsonify, render_template
 from garminconnect import Garmin
-import garth  # <-- Indispensable pour éviter le NameError
+import garth
 
 app = Flask(__name__)
 
@@ -12,9 +12,7 @@ def index():
 def format_garmin_steps(raw_steps):
     formatted_steps = []
     for index, step in enumerate(raw_steps, start=1):
-        # Conversion selon le type d'étape (Exemple basique d'échauffement / effort / repos)
-        step_type_id = 3 if step.get("type") == "warmup" else 1 # 3 = Warmup, 1 = Work, etc.
-        
+        step_type_id = 3 if step.get("type") == "warmup" else 1
         garmin_step = {
             "type": "ExecutableStep",
             "stepOrder": index,
@@ -24,7 +22,7 @@ def format_garmin_steps(raw_steps):
             },
             "childStepId": None,
             "endCondition": {
-                "conditionTypeId": 2, # 2 = Time, 3 = Distance
+                "conditionTypeId": 2,
                 "conditionKey": step.get("kind", "time")
             },
             "targetType": {
@@ -60,7 +58,7 @@ def send_to_garmin():
         else:
             client.login()
 
-       workout_payload = {
+        workout_payload = {
             "workoutName": workout_name,
             "sportType": {"sportTypeId": 1, "sportKey": "running"},
             "workoutSegments": [
@@ -72,7 +70,6 @@ def send_to_garmin():
             ]
         }
 
-      # Utilisation du chemin complet incluant le proxy moderne Garmin
         garth.client.request(
             "POST",
             "connect",
@@ -80,7 +77,7 @@ def send_to_garmin():
             json=workout_payload
         )
         
-        return jsonify({"success": True, "message": "Entraînement envoyé avec succès sur Garmin Connect !" })
+        return jsonify({"success": True, "message": "Séance envoyée avec succès ! Synchronise ta montre."})
 
     except Exception as e:
         err_msg = str(e)
