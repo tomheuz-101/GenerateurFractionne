@@ -42,8 +42,12 @@ def send_to_garmin():
             ]
         }
 
-        # Appel direct via garth pour poster l'entraînement
-        garth.post("connect", "/workout-service/workout", json=workout_payload)
+        # Appel POST via la session client garth validée
+        client.garth.client.request(
+            "POST",
+            "https://connect.garmin.com/workout-service/workout",
+            json=workout_payload
+        )
         
         return jsonify({"success": True, "message": "Entraînement envoyé avec succès sur Garmin Connect !" })
 
