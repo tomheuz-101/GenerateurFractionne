@@ -15,13 +15,20 @@ def index():
 @app.route("/api/send-to-garmin", methods=["POST"])
 def send_to_garmin():
     data = request.json
+    
+    # Récupération sécurisée depuis le JSON envoyé par le front (ou les variables d'environnement)
+    email = data.get("email") or os.environ.get("GARMIN_EMAIL")
+    password = data.get("password") or os.environ.get("GARMIN_PASSWORD")
+    
     workout_name = data.get("name")
     steps = data.get("steps")
+    mfa_code = data.get("mfa_code")
 
     if not email or not password:
-        return jsonify({"success": False, "error": "Identifiants Garmin non configurés."}), 500
+        return jsonify({"success": False, "error": "Identifiants Garmin manquants."}), 400
 
     try:
+        # Suite de ton code de connexion...
         # Connexion à Garmin Connect
         # Astuce : Pour éviter les blocages de captcha/MFA répétés, garth/garminconnect 
         # permet de sauvegarder les tokens de session.
