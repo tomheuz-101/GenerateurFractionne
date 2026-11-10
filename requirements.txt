@@ -2,3 +2,4 @@ flask
 gunicorn
 garminconnect
 garth
+fit-tool
