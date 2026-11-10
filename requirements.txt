@@ -1,4 +1,3 @@
-
 flask
 gunicorn
 garminconnect==0.3.20
