@@ -87,12 +87,14 @@ def send_to_garmin():
             return jsonify({"success": False, "mfa_required": True, "error": "Code MFA requis par Garmin."}), 401
         return jsonify({"success": False, "error": err_msg}), 400
 
-from fit_tool.fit_file_builder import FitFileBuilder
-from fit_tool.profile.messages.workout_message import WorkoutMessage
-from fit_tool.profile.profile_type import Sport, Intensity
 import tempfile
 import os
 from flask import request, send_file, jsonify
+from fit_tool.fit_file_builder import FitFileBuilder
+from fit_tool.profile.messages.file_id_message import FileIdMessage
+from fit_tool.profile.messages.workout_message import WorkoutMessage
+from fit_tool.profile.messages.workout_step_message import WorkoutStepMessage
+from fit_tool.profile.profile_type import FileType, Manufacturer, Sport, Intensity
 
 @app.route("/api/export-fit", methods=["POST"])
 def export_fit():
@@ -103,14 +105,41 @@ def export_fit():
 
         builder = FitFileBuilder(auto_define=True)
         
-        # Création du message d'entraînement principal
+        # 1. Message d'identification du fichier (obligatoire pour Garmin)
+        file_id = FileIdMessage()
+        file_id.type = FileType.WORKOUT
+        file_id.manufacturer = Manufacturer.DEVELOPMENT.value
+        file_id.product = 0
+        file_id.serial_number = 12345
+        builder.add(file_id)
+
+        # 2. Message principal de l'entraînement
         workout_msg = WorkoutMessage()
         workout_msg.wkt_name = workout_name
         workout_msg.sport = Sport.RUNNING
+        workout_msg.num_valid_steps = len(steps)
         builder.add(workout_msg)
 
-        # Ajout des étapes dans le builder (si nécessaire, ou structure de base)
-        # fit-tool gère l'encodage binaire natif de la structure Garmin
+        # 3. Ajout de chaque étape
+        for index, step in enumerate(steps, start=1):
+            step_msg = WorkoutStepMessage()
+            step_msg.message_index = index - 1
+            step_msg.wkt_step_name = step.get("type", "interval")
+            
+            # Type d'étape (Warmup = 3, Interval = 0, Cooldown = 4, Recovery = 1 selon le profil Garmin)
+            step_type_map = {"warmup": 3, "cooldown": 4, "recovery": 1, "interval": 0}
+            step_msg.intensity = Intensity.ACTIVE if step.get("type") == "interval" else Intensity.RESTING
+            
+            # Durée (Temps en secondes ou distance convertie)
+            duration_val = float(step.get("value", 0))
+            if step.get("kind") == "time":
+                # En millisecondes pour les durées basées sur le temps dans fit-tool
+                step_msg.duration_time = duration_val
+            else:
+                # En millimètres pour la distance
+                step_msg.duration_distance = duration_val * 1000
+                
+            builder.add(step_msg)
 
         fit_file = builder.build()
         
