@@ -105,7 +105,7 @@ def export_fit():
 
         builder = FitFileBuilder(auto_define=True)
         
-        # 1. Message d'identification du fichier
+        # 1. En-tête de fichier obligatoire
         file_id = FileIdMessage()
         file_id.type = FileType.WORKOUT
         file_id.manufacturer = Manufacturer.DEVELOPMENT.value
@@ -113,27 +113,26 @@ def export_fit():
         file_id.serial_number = 12345
         builder.add(file_id)
 
-        # 2. Message principal de l'entraînement
+        # 2. Entraînement global
         workout_msg = WorkoutMessage()
         workout_msg.wkt_name = workout_name
         workout_msg.sport = Sport.RUNNING
         workout_msg.num_valid_steps = len(steps)
         builder.add(workout_msg)
 
-        # 3. Ajout de chaque étape
+        # 3. Étapes de la séance
         for index, step in enumerate(steps, start=1):
             step_msg = WorkoutStepMessage()
             step_msg.message_index = index - 1
             step_msg.wkt_step_name = step.get("type", "interval")
-            
-            # Utilisation directe de Intensity.ACTIVE ou valeur par défaut pour éviter l'erreur d'attribut
             step_msg.intensity = Intensity.ACTIVE
             
-            # Durée (Temps en millisecondes ou distance en millimètres)
             duration_val = float(step.get("value", 0))
             if step.get("kind") == "time":
-                step_msg.duration_time = duration_val
+                # Le temps dans fit-tool s'exprime en millisecondes
+                step_msg.duration_time = duration_val * 1000
             else:
+                # La distance s'exprime en millimètres
                 step_msg.duration_distance = duration_val * 1000
                 
             builder.add(step_msg)
