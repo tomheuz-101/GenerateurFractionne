@@ -1,5 +1,5 @@
+
 flask
 gunicorn
-garminconnect
-garth
-fit-tool
+garminconnect==0.3.20
+fit-tool==0.9.17
