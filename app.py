@@ -42,13 +42,12 @@ def send_to_garmin():
             ]
         }
 
-        # Utilisation de l'appel direct validé pour l'API Garmin Workouts
-  client.garth.post("connect", "/workout-service/workout", json=workout_payload)
+        # Appel direct via garth pour poster l'entraînement
+        garth.post("connect", "/workout-service/workout", json=workout_payload)
         
         return jsonify({"success": True, "message": "Entraînement envoyé avec succès sur Garmin Connect !" })
 
     except Exception as e:
-        # Capture globale propre pour éviter le plantage et afficher l'erreur exacte
         err_msg = str(e)
         if "MFA" in err_msg or "mfa" in err_msg:
             return jsonify({"success": False, "mfa_required": True, "error": "Code MFA requis par Garmin."}), 401
