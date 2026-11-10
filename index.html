@@ -151,6 +151,32 @@ function render(){
   $("json").value=JSON.stringify({name:label+" "+iv.length+" efforts",steps:s},null,2);
 }
 
+  document.getElementById('exportFitBtn').addEventListener('click', async () => {
+    const workoutData = {
+        name: document.getElementById('workoutName').value,
+        steps: currentSteps // ton tableau d'étapes
+    };
+
+    const response = await fetch('/api/export-fit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(workoutData)
+    });
+
+    if (response.ok) {
+        const blob = await response.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${workoutData.name}.fit`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    } else {
+        alert("Erreur lors de la génération du fichier .fit");
+    }
+});
+
 $("send-garmin").onclick = async () => {
   const jsonText = $("json").value;
   if (!jsonText) return;
