@@ -94,10 +94,7 @@ def export_fit():
         workout_name = data.get("name", "Séance Fractionnée")
         steps = data.get("steps", [])
 
-        # Initialisation correcte de FitFileBuilder sans argument superflu
         builder = FitFileBuilder(auto_define=True)
-        
-        # Construction du fichier .fit
         fit_file = builder.build()
         
         output = io.BytesIO()
@@ -112,6 +109,8 @@ def export_fit():
             download_name=filename
         )
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         return jsonify({"success": False, "error": str(e)}), 500
 
 if __name__ == "__main__":
