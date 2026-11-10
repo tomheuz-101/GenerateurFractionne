@@ -42,10 +42,10 @@ def send_to_garmin():
             ]
         }
 
-        # Requête POST authentifiée via garth global
+        # Appel POST authentifié avec path explicite
         garth.client.request(
             "POST",
-            "https://connect.garmin.com/modern/proxy/workout-service/workout",
+            path="workout-service/workout",
             json=workout_payload
         )
         
