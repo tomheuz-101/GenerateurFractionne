@@ -42,11 +42,11 @@ def send_to_garmin():
             ]
         }
 
-      # Envoi de la requête POST avec le chemin positionnel direct
+      # Utilisation du chemin complet incluant le proxy moderne Garmin
         garth.client.request(
             "POST",
             "connect",
-            "/workout-service/workout",
+            "/modern/proxy/workout-service/workout",
             json=workout_payload
         )
         
