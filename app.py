@@ -9,6 +9,36 @@ app = Flask(__name__)
 def index():
     return render_template("index.html")
 
+def format_garmin_steps(raw_steps):
+    formatted_steps = []
+    for index, step in enumerate(raw_steps, start=1):
+        # Conversion selon le type d'étape (Exemple basique d'échauffement / effort / repos)
+        step_type_id = 3 if step.get("type") == "warmup" else 1 # 3 = Warmup, 1 = Work, etc.
+        
+        garmin_step = {
+            "type": "ExecutableStep",
+            "stepOrder": index,
+            "stepType": {
+                "stepTypeId": step_type_id,
+                "stepKey": step.get("type", "interval")
+            },
+            "childStepId": None,
+            "endCondition": {
+                "conditionTypeId": 2, # 2 = Time, 3 = Distance
+                "conditionKey": step.get("kind", "time")
+            },
+            "targetType": {
+                "refreshRate": 0,
+                "workoutTargetTypeId": 1,
+                "workoutTargetTypeKey": "no.target"
+            },
+            "durationValue": float(step.get("value", 0)),
+            "targetValueOne": None,
+            "targetValueTwo": None
+        }
+        formatted_steps.append(garmin_step)
+    return formatted_steps
+
 @app.route("/api/send-to-garmin", methods=["POST"])
 def send_to_garmin():
     data = request.json
@@ -30,14 +60,14 @@ def send_to_garmin():
         else:
             client.login()
 
-        workout_payload = {
+       workout_payload = {
             "workoutName": workout_name,
             "sportType": {"sportTypeId": 1, "sportKey": "running"},
             "workoutSegments": [
                 {
                     "segmentOrder": 1,
                     "sportType": {"sportTypeId": 1, "sportKey": "running"},
-                    "workoutSteps": steps
+                    "workoutSteps": format_garmin_steps(steps)
                 }
             ]
         }
