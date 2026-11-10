@@ -42,9 +42,10 @@ def send_to_garmin():
             ]
         }
 
-        # Appel POST authentifié avec path explicite
+       # Utilisation de la méthode request avec le sous-domaine et le path requis
         garth.client.request(
             "POST",
+            "connect",
             path="workout-service/workout",
             json=workout_payload
         )
