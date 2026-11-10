@@ -30,7 +30,6 @@ def send_to_garmin():
         else:
             client.login()
 
-        # Construction du payload d'entraînement au format Garmin
         workout_payload = {
             "workoutName": workout_name,
             "sportType": {"sportTypeId": 1, "sportKey": "running"},
@@ -43,15 +42,17 @@ def send_to_garmin():
             ]
         }
 
-        # Utilisation de l'endpoint POST correct de la bibliothèque garminconnect
-        client.add_workout(workout_payload)
+        # Utilisation de l'appel direct validé pour l'API Garmin Workouts
+        client.connectapi("workout-service/workout", method="POST", json=workout_payload)
         
         return jsonify({"success": True, "message": "Entraînement envoyé avec succès sur Garmin Connect !" })
 
-    except garth.exceptions.MFAError:
-        return jsonify({"success": False, "mfa_required": True, "error": "Code MFA requis par Garmin."}), 401
     except Exception as e:
-        return jsonify({"success": False, "error": str(e)}), 400
+        # Capture globale propre pour éviter le plantage et afficher l'erreur exacte
+        err_msg = str(e)
+        if "MFA" in err_msg or "mfa" in err_msg:
+            return jsonify({"success": False, "mfa_required": True, "error": "Code MFA requis par Garmin."}), 401
+        return jsonify({"success": False, "error": err_msg}), 400
 
 if __name__ == "__main__":
     app.run(debug=True)
