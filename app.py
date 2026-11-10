@@ -86,7 +86,7 @@ def send_to_garmin():
         if "MFA" in err_msg or "mfa" in err_msg:
             return jsonify({"success": False, "mfa_required": True, "error": "Code MFA requis par Garmin."}), 401
         return jsonify({"success": False, "error": err_msg}), 400
-
+        
 import tempfile
 import os
 from flask import request, send_file, jsonify
@@ -105,7 +105,7 @@ def export_fit():
 
         builder = FitFileBuilder(auto_define=True)
         
-        # 1. Message d'identification du fichier (obligatoire pour Garmin)
+        # 1. Message d'identification du fichier
         file_id = FileIdMessage()
         file_id.type = FileType.WORKOUT
         file_id.manufacturer = Manufacturer.DEVELOPMENT.value
@@ -126,17 +126,14 @@ def export_fit():
             step_msg.message_index = index - 1
             step_msg.wkt_step_name = step.get("type", "interval")
             
-            # Type d'étape (Warmup = 3, Interval = 0, Cooldown = 4, Recovery = 1 selon le profil Garmin)
-            step_type_map = {"warmup": 3, "cooldown": 4, "recovery": 1, "interval": 0}
-            step_msg.intensity = Intensity.ACTIVE if step.get("type") == "interval" else Intensity.RESTING
+            # Utilisation directe de Intensity.ACTIVE ou valeur par défaut pour éviter l'erreur d'attribut
+            step_msg.intensity = Intensity.ACTIVE
             
-            # Durée (Temps en secondes ou distance convertie)
+            # Durée (Temps en millisecondes ou distance en millimètres)
             duration_val = float(step.get("value", 0))
             if step.get("kind") == "time":
-                # En millisecondes pour les durées basées sur le temps dans fit-tool
                 step_msg.duration_time = duration_val
             else:
-                # En millimètres pour la distance
                 step_msg.duration_distance = duration_val * 1000
                 
             builder.add(step_msg)
