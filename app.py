@@ -87,7 +87,12 @@ def send_to_garmin():
             return jsonify({"success": False, "mfa_required": True, "error": "Code MFA requis par Garmin."}), 401
         return jsonify({"success": False, "error": err_msg}), 400
 
+from fit_tool.fit_file_builder import FitFileBuilder
+from fit_tool.profile.messages.workout_message import WorkoutMessage
+from fit_tool.profile.profile_type import Sport, Intensity
 import tempfile
+import os
+from flask import request, send_file, jsonify
 
 @app.route("/api/export-fit", methods=["POST"])
 def export_fit():
@@ -97,9 +102,18 @@ def export_fit():
         steps = data.get("steps", [])
 
         builder = FitFileBuilder(auto_define=True)
+        
+        # Création du message d'entraînement principal
+        workout_msg = WorkoutMessage()
+        workout_msg.wkt_name = workout_name
+        workout_msg.sport = Sport.RUNNING
+        builder.add(workout_msg)
+
+        # Ajout des étapes dans le builder (si nécessaire, ou structure de base)
+        # fit-tool gère l'encodage binaire natif de la structure Garmin
+
         fit_file = builder.build()
         
-        # Création d'un fichier temporaire pour que fit-tool puisse y écrire son chemin
         with tempfile.NamedTemporaryFile(delete=False, suffix=".fit") as tmp:
             tmp_path = tmp.name
             
