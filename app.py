@@ -43,7 +43,7 @@ def send_to_garmin():
         }
 
         # Utilisation de l'appel direct validé pour l'API Garmin Workouts
-        client.connectapi("workout-service/workout", method="POST", json=workout_payload)
+  client.garth.post("connect", "/workout-service/workout", json=workout_payload)
         
         return jsonify({"success": True, "message": "Entraînement envoyé avec succès sur Garmin Connect !" })
 
