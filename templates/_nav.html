@@ -1,0 +1,11 @@
+<nav class="nav">
+  <a href="/"{% if page == "creator" %} aria-current="page"{% endif %}>Créateur</a>
+  {% if me %}
+  <a href="/bibliotheque"{% if page == "library" %} aria-current="page"{% endif %}>Bibliothèque</a>
+  <a href="/profil"{% if page == "profile" %} aria-current="page"{% endif %}>Profil</a>
+  {% if owner %}<a href="/admin"{% if page == "admin" %} aria-current="page"{% endif %}>Administration</a>{% endif %}
+  <a href="#" id="navOut">Déconnexion</a>
+  {% else %}
+  <a href="/connexion"{% if page == "login" %} aria-current="page"{% endif %}>Connexion</a>
+  {% endif %}
+</nav>

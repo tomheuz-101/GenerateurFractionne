@@ -7,123 +7,19 @@
 <title>Générateur de fractionné</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
 
-<style>
-:root{
---bg:#eef1f0;--card:#fff;--tx:#14212b;--mu:#5d6b75;
---bd:#d5dcdb;--ef:#2447d8;--re:#9fb0bd;--wu:#7d8f9c;
-color-scheme:light;box-sizing:border-box;
-padding-top:env(safe-area-inset-top,0px);
-padding-bottom:env(safe-area-inset-bottom,0px)
-}
-@media (prefers-color-scheme:dark){
-:root:not([data-theme="light"]){
---bg:#10181e;--card:#18232b;--tx:#e9eef1;--mu:#93a2ad;
---bd:#2b3a45;--ef:#6f8cff;--re:#4a5d6b;--wu:#5f7482;
-color-scheme:dark
-}}
-:root[data-theme="dark"]{
---bg:#10181e;--card:#18232b;--tx:#e9eef1;--mu:#93a2ad;
---bd:#2b3a45;--ef:#6f8cff;--re:#4a5d6b;--wu:#5f7482;
-color-scheme:dark
-}
-*{box-sizing:border-box}
-html,body{margin:0}
-body{
-background:var(--bg);color:var(--tx);
-font:16px/1.45 Barlow,system-ui,sans-serif;
-padding:18px 16px 40px
-}
-main{max-width:720px;margin:0 auto}
-h1{
-font:700 34px/1.05 "Barlow Condensed",Impact,sans-serif;
-margin:4px 0 16px;letter-spacing:.01em
-}
-.card{
-background:var(--card);border:1px solid var(--bd);
-border-radius:10px;padding:14px;margin-bottom:14px
-}
-.seg{
-display:grid;grid-template-columns:repeat(4,1fr);
-gap:6px;margin-bottom:12px
-}
-.seg button{
-font:600 15px Barlow,sans-serif;padding:10px 4px;
-border:1px solid var(--bd);background:transparent;
-color:var(--tx);border-radius:8px;cursor:pointer
-}
-.seg button[aria-pressed="true"]{
-background:var(--ef);border-color:var(--ef);color:#fff
-}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-label{display:block;font-size:13px;color:var(--mu)}
-input,select{
-width:100%;margin-top:3px;font:500 16px Barlow,sans-serif;
-padding:9px 10px;border:1px solid var(--bd);
-border-radius:8px;background:var(--bg);color:var(--tx)
-}
-button:focus-visible,input:focus-visible,select:focus-visible{
-outline:2px solid var(--ef);outline-offset:2px
-}
-.hide{display:none}
-.pace-title{
-grid-column:1/-1;font-weight:600;color:var(--tx);
-margin-top:5px;font-size:14px
-}
-#bars{
-display:flex;align-items:flex-end;gap:2px;height:130px;
-border-bottom:2px solid var(--tx);padding-bottom:0
-}
-#bars i{
-display:block;min-width:2px;border-radius:2px 2px 0 0;
-background:var(--re)
-}
-#bars i.interval{background:var(--ef)}
-#bars i.warmup,#bars i.cooldown{background:var(--wu)}
-#sum{font:600 20px "Barlow Condensed",sans-serif;margin:10px 0 2px}
-.note{font-size:13px;color:var(--mu);margin:0}
-ol{margin:0;padding-left:22px}
-li{
-padding:7px 0;border-bottom:1px solid var(--bd);
-display:flex;align-items:center;gap:7px;flex-wrap:wrap
-}
-li .nm{flex:1 1 110px}
-li.interval .nm{color:var(--ef);font-weight:600}
-li input{width:75px;margin:0;padding:6px 7px}
-li input.pc{width:70px}
-li small{color:var(--mu)}
-li .del{
-margin-left:auto;border:0;background:transparent;
-color:var(--mu);font-size:22px;line-height:1;
-cursor:pointer;padding:0 6px
-}
-textarea{
-width:100%;height:150px;font:13px/1.4 ui-monospace,Menlo,monospace;
-background:var(--bg);color:var(--tx);
-border:1px solid var(--bd);border-radius:8px;padding:8px
-}
-.copy{
-margin-top:8px;font:600 15px Barlow,sans-serif;
-padding:10px 16px;border:0;border-radius:8px;
-background:var(--ef);color:#fff;cursor:pointer
-}
-h2{font:700 20px "Barlow Condensed",sans-serif;margin:0 0 8px}
-.pace-fields{
-display:flex;align-items:center;gap:4px;flex-wrap:wrap
-}
-.pace-fields input{width:68px}
-@media(max-width:420px){
-body{padding-left:10px;padding-right:10px}
-.seg button{font-size:13px}
-li input{width:65px}
-li input.pc{width:64px}
-}
-</style>
+<link rel="stylesheet" href="/static/style.css">
 </head>
 
 <body>
 <main>
+{% include "_nav.html" %}
 
 <h1>Générateur de fractionné</h1>
+
+<div class="card">
+  <h2>Modèles</h2>
+  <div id="tpl" class="seg" style="grid-template-columns:repeat(2,1fr);margin:0"></div>
+</div>
 
 <div class="card">
 
@@ -132,6 +28,7 @@ li input.pc{width:64px}
     <button data-t="pyramide" aria-pressed="true">Pyramide</button>
     <button data-t="descendant" aria-pressed="false">Descendant</button>
     <button data-t="ascendant" aria-pressed="false">Ascendant</button>
+    <button data-t="blocs" aria-pressed="false">Blocs</button>
   </div>
 
   <div class="grid">
@@ -198,6 +95,13 @@ li input.pc{width:64px}
   </div>
 </div>
 
+<div class="card hide" id="bCard">
+  <h2>Blocs</h2>
+  <p class="note" style="margin-bottom:10px">Enchaîne autant de blocs que tu veux : chacun a ses répétitions, sa récupération, son allure cible, et peut être répété. L’échauffement et le retour au calme se règlent plus haut.</p>
+  <div id="bList"></div>
+  <button class="mini" id="bAdd">+ Ajouter un bloc</button>
+</div>
+
 <div class="card">
   <div id="bars" aria-label="Profil de la séance"></div>
   <div id="sum"></div>
@@ -234,8 +138,18 @@ li input.pc{width:64px}
   </p>
 </div>
 
+<div class="card">
+  <h2>Enregistrer</h2>
+  <div class="grid">
+    <label>Nom de la séance<input id="wName" placeholder="10 × 400 m"></label>
+    <div style="display:flex;align-items:flex-end"><button class="copy" id="wSave" style="margin:0;width:100%">Enregistrer</button></div>
+  </div>
+  <p class="note" id="wState" style="margin-top:6px">Nouvelle séance · <a href="/bibliotheque">Ma bibliothèque</a></p>
+</div>
+
 </main>
 
+<script src="/static/common.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -289,6 +203,8 @@ function values(){
 }
 
 function steps(){
+
+  if(type === "blocs") return blockSteps();
 
   const u = $("unit").value;
   const vs = values();
@@ -468,16 +384,19 @@ function render(){
     `<i class="${x.type}" style="flex:${d(x)} 1 0;height:${H[x.type]}%"></i>`
   ).join("");
 
-  let km = null;
+  let km = 0, known = true;
 
-  if($("unit").value==="m"){
-    km = iv.reduce((a,x)=>a+x.value,0)/1000;
-  }else if(iv.every(x=>x.paceMinSecPerKm && x.paceMaxSecPerKm)){
-    km = iv.reduce((a,x)=>{
-      const pace = (x.paceMinSecPerKm+x.paceMaxSecPerKm)/2;
-      return a+x.value/pace;
-    },0);
-  }
+  iv.forEach(x=>{
+    if(x.kind==="distance"){
+      km += x.value/1000;
+    }else if(x.paceMinSecPerKm && x.paceMaxSecPerKm){
+      km += x.value/((x.paceMinSecPerKm+x.paceMaxSecPerKm)/2);
+    }else{
+      known = false;
+    }
+  });
+
+  if(!known) km = null;
 
   $("sum").textContent =
     iv.length+" efforts"+
@@ -493,7 +412,8 @@ function render(){
     normal:"Fractionné",
     pyramide:"Pyramide",
     descendant:"Fractionné descendant",
-    ascendant:"Fractionné ascendant"
+    ascendant:"Fractionné ascendant",
+    blocs:"Séance par blocs"
   }[type];
 
   $("json").value = JSON.stringify({
@@ -513,7 +433,8 @@ $("exportFitBtn").addEventListener("click",async()=>{
     normal:"Fractionné",
     pyramide:"Pyramide",
     descendant:"Fractionné descendant",
-    ascendant:"Fractionné ascendant"
+    ascendant:"Fractionné ascendant",
+    blocs:"Séance par blocs"
   }[type];
 
   const iv = S.filter(x=>x.type==="interval");
@@ -621,6 +542,7 @@ document.querySelectorAll("#seg button").forEach(b=>{
       e.classList.toggle("hide",type==="normal");
     });
 
+    modeUI();
     regen();
   };
 });
@@ -742,6 +664,207 @@ document.querySelectorAll(".r").forEach(e=>{
 
 regen();
 
+
+// ------------------------------------------
+// MODELES ET ENREGISTREMENT
+// ------------------------------------------
+
+const FIELDS = ["paceMin","paceMax","reps","val","min","max","step","rec","sets","srec","wu","cd"];
+let curId = null;
+
+const TPL = [
+  {n:"10 × 400 m",t:"normal",u:"m",f:{reps:10,val:400,rec:90}},
+  {n:"5 × 1000 m",t:"normal",u:"m",f:{reps:5,val:1000,rec:120}},
+  {n:"Pyramide 200-800 m",t:"pyramide",u:"m",f:{min:200,max:800,step:200,rec:90}},
+  {n:"Descendant 1000-200 m",t:"descendant",u:"m",f:{min:200,max:1000,step:200,rec:90}},
+  {n:"Seuil 3 × 10 min",t:"normal",u:"s",f:{reps:3,val:600,rec:120}},
+  {n:"30/30 × 12",t:"normal",u:"s",f:{reps:12,val:30,rec:30}},
+  {n:"Blocs 5 × 400 m + 3 × 1000 m",t:"blocs",u:"m",f:{wu:15,cd:10},b:[
+    {reps:5,unit:"m",val:400,rec:60,paceMin:"",paceMax:"",rep:1,brec:120},
+    {reps:3,unit:"m",val:1000,rec:120,paceMin:"",paceMax:"",rep:1,brec:0}]}
+];
+
+$("tpl").innerHTML = TPL.map((t,i)=>`<button data-k="${i}">${esc(t.n)}</button>`).join("");
+
+$("tpl").onclick = e=>{
+  const b = e.target.closest("button");
+  if(!b) return;
+  const t = TPL[b.dataset.k];
+  document.querySelector(`#seg [data-t="${t.t}"]`).click();
+  $("unit").value = t.u;
+  for(const k in t.f) $(k).value = t.f[k];
+  $("sets").value = 1;
+  if(t.b){ B = JSON.parse(JSON.stringify(t.b)); bUI(); }
+  $("wName").value = t.n;
+  curId = null;
+  $("wState").textContent = "Nouvelle séance (modèle).";
+  regen();
+};
+
+function snap(){
+  const f = {};
+  FIELDS.forEach(k=>f[k]=$(k).value);
+  return {type,unit:$("unit").value,f,steps:S,blocks:B};
+}
+
+function openW(w){
+  const d = w.data;
+  document.querySelector(`#seg [data-t="${d.type}"]`).click();
+  $("unit").value = d.unit;
+  FIELDS.forEach(k=>{ if(d.f && k in d.f) $(k).value = d.f[k]; });
+  if(d.blocks){ B = d.blocks; bUI(); }
+  S = d.steps;
+  listUI();
+  render();
+  $("wName").value = w.name;
+  curId = w.id;
+  $("wState").textContent = "Modification de « "+w.name+" »";
+}
+
+$("wSave").onclick = async()=>{
+  const name = $("wName").value.trim();
+  if(!name){ $("wState").textContent = "Donne un nom à la séance."; return; }
+  if(!S.length){ $("wState").textContent = "La séance est vide."; return; }
+  const body = {name,data:snap()};
+  const r = curId
+    ? await api("/api/workouts/"+curId,"PUT",body)
+    : await api("/api/workouts","POST",body);
+  if(r.status===401){
+    $("wState").innerHTML = '<a href="/connexion?next=/" target="_blank">Connecte-toi</a> (nouvel onglet) pour enregistrer ta séance.';
+    return;
+  }
+  if(!r.ok){ $("wState").textContent = r.j.error || "Erreur d’enregistrement."; return; }
+  curId = r.j.workout.id;
+  $("wState").innerHTML = "Enregistrée : « "+esc(name)+" » · <a href=\"/bibliotheque\">Ma bibliothèque</a>";
+};
+
+// Ouverture depuis la bibliothèque : /?open=ID
+(async()=>{
+  const id = new URLSearchParams(location.search).get("open");
+  if(!id) return;
+  const r = await api("/api/workouts");
+  const w = (r.j.workouts||[]).find(x=>String(x.id)===id);
+  if(w) openW(w); else $("wState").textContent = "Séance introuvable.";
+})();
+
+// ------------------------------------------
+// CREATEUR LIBRE PAR BLOCS
+// ------------------------------------------
+
+let B = [
+  {reps:5,unit:"m",val:400,rec:60,paceMin:"",paceMax:"",rep:1,brec:120},
+  {reps:3,unit:"m",val:1000,rec:120,paceMin:"",paceMax:"",rep:1,brec:0}
+];
+
+function blockSteps(){
+
+  const out = [];
+  const wu = Math.max(0,+$("wu").value)*60;
+  const cd = Math.max(0,+$("cd").value)*60;
+  const clamp = (v,max)=>Math.min(Math.max(1,Math.round(+v)||1),max);
+
+  if(wu>0) out.push({type:"warmup",kind:"time",value:wu});
+
+  const runs = [];
+  B.forEach(b=>{
+    const n = clamp(b.reps,60);
+    for(let k=0;k<clamp(b.rep,20);k++) runs.push({b,n});
+  });
+
+  runs.forEach((r,k)=>{
+
+    const b = r.b;
+    const v = +b.val;
+    const rec = Math.max(0,+b.rec||0);
+    const pmin = parsePace(b.paceMin);
+    const pmax = parsePace(b.paceMax);
+    const okPace = pmin!==null && pmax!==null && pmin<=pmax;
+
+    if(v>0){
+      for(let i=0;i<r.n;i++){
+        const s = {type:"interval",kind:b.unit==="m"?"distance":"time",value:v};
+        if(okPace){ s.paceMinSecPerKm = pmin; s.paceMaxSecPerKm = pmax; }
+        out.push(s);
+        if(i<r.n-1 && rec>0) out.push({type:"recovery",kind:"time",value:rec});
+      }
+    }
+
+    const brec = Math.max(0,+b.brec||0);
+    if(k<runs.length-1 && brec>0){
+      out.push({type:"recovery",kind:"time",value:brec});
+    }
+  });
+
+  if(cd>0) out.push({type:"cooldown",kind:"time",value:cd});
+
+  return out;
+}
+
+function bUI(){
+  const opt = (b,v,l)=>`<option value="${v}"${b.unit===v?" selected":""}>${l}</option>`;
+  $("bList").innerHTML = B.map((b,i)=>`
+    <div class="bk" data-b="${i}">
+      <div class="bkh"><b>Bloc ${i+1}</b>
+        <span>
+          <button class="mini" data-a="up" aria-label="Monter">↑</button>
+          <button class="mini" data-a="down" aria-label="Descendre">↓</button>
+          <button class="mini" data-a="dup">Dupliquer</button>
+          <button class="mini" data-a="del">Supprimer</button>
+        </span>
+      </div>
+      <div class="grid">
+        <label>Répétitions<input type="number" min="1" data-f="reps" value="${esc(b.reps)}"></label>
+        <label>Effort en<select data-f="unit">${opt(b,"m","Distance (m)")}${opt(b,"s","Temps (s)")}</select></label>
+        <label>Valeur de l’effort<input type="number" min="1" data-f="val" value="${esc(b.val)}"></label>
+        <label>Récup entre répétitions (s)<input type="number" min="0" data-f="rec" value="${esc(b.rec)}"></label>
+        <label>Allure min (min/km)<input data-f="paceMin" placeholder="4:10" inputmode="numeric" value="${esc(b.paceMin)}"></label>
+        <label>Allure max (min/km)<input data-f="paceMax" placeholder="4:20" inputmode="numeric" value="${esc(b.paceMax)}"></label>
+        <label>Répéter le bloc ×<input type="number" min="1" max="20" data-f="rep" value="${esc(b.rep)}"></label>
+        <label>Récup après le bloc (s)<input type="number" min="0" data-f="brec" value="${esc(b.brec)}"></label>
+      </div>
+    </div>`).join("");
+}
+
+// En mode blocs, seuls l'échauffement et le retour au calme restent
+// dans les réglages généraux ; le reste est géré bloc par bloc.
+function modeUI(){
+  const bl = type==="blocs";
+  $("bCard").classList.toggle("hide",!bl);
+  $("seg").parentElement.querySelectorAll(".grid > *").forEach(el=>{
+    const keep = el.querySelector("#wu,#cd");
+    el.classList.toggle("bh",bl && !keep);
+  });
+}
+
+$("bList").oninput = e=>{
+  const t = e.target;
+  const el = t.closest("[data-b]");
+  if(!el || !t.dataset.f) return;
+  B[Number(el.dataset.b)][t.dataset.f] = t.value;
+  regen();
+};
+
+$("bList").onclick = e=>{
+  const btn = e.target.closest("[data-a]");
+  if(!btn) return;
+  const i = Number(btn.closest("[data-b]").dataset.b);
+  const a = btn.dataset.a;
+  if(a==="del" && B.length>1) B.splice(i,1);
+  else if(a==="dup") B.splice(i+1,0,{...B[i]});
+  else if(a==="up" && i>0) [B[i-1],B[i]] = [B[i],B[i-1]];
+  else if(a==="down" && i<B.length-1) [B[i+1],B[i]] = [B[i],B[i+1]];
+  bUI();
+  regen();
+};
+
+$("bAdd").onclick = ()=>{
+  B.push({reps:4,unit:"m",val:400,rec:60,paceMin:"",paceMax:"",rep:1,brec:120});
+  bUI();
+  regen();
+};
+
+bUI();
+modeUI();
 </script>
 </body>
 </html>

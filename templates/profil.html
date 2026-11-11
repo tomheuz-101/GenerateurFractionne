@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Profil · Fractionné</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+</head><body><main>
+{% include "_nav.html" %}
+<h1>Profil</h1>
+<div class="card"><h2>Compte</h2><p style="margin:0">Connecté en tant que <b>{{ me.email }}</b></p></div>
+
+<div class="card">
+  <h2>Compte Garmin</h2>
+  <p class="note" id="gState" style="margin-bottom:6px"></p>
+  <div id="gForm">
+    <div class="grid">
+      <label>E-mail Garmin<input id="gMail" type="email" autocomplete="off"></label>
+      <label>Mot de passe Garmin<input id="gPw" type="password" autocomplete="off"></label>
+    </div>
+    <div id="gMfa" class="hide" style="margin-top:8px"><label>Code de vérification Garmin<input id="gCode" inputmode="numeric" autocomplete="one-time-code"></label></div>
+    <p class="err" id="gErr"></p>
+    <button class="copy" id="gGo" style="margin:8px 0 6px">Connecter mon compte Garmin</button>
+    <p class="note">Ton mot de passe sert une seule fois : il n’est jamais enregistré, seuls des jetons chiffrés le sont.</p>
+  </div>
+  <button class="mini hide" id="gOff">Déconnecter Garmin</button>
+</div>
+
+<div class="card">
+  <h2>Mot de passe</h2>
+  <div class="grid">
+    <label>Mot de passe actuel<input id="pCur" type="password" autocomplete="current-password"></label>
+    <label>Nouveau mot de passe (8 caractères min.)<input id="pNew" type="password" autocomplete="new-password"></label>
+  </div>
+  <p class="note" id="pMsg" style="margin:8px 0"></p>
+  <button class="copy" id="pGo" style="margin:0">Changer le mot de passe</button>
+</div>
+
+<div class="card">
+  <h2>Supprimer mon compte</h2>
+  <p class="note" style="margin-bottom:8px">Supprime définitivement ton compte, tes séances et le lien Garmin.</p>
+  <label>Mot de passe<input id="dPw" type="password" autocomplete="current-password"></label>
+  <p class="err" id="dErr"></p>
+  <button class="mini" id="dGo" style="margin-top:8px">Supprimer mon compte</button>
+</div>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+async function gRefresh(){
+  const r = await api("/api/garmin/status");
+  const linked = !!r.j.linked;
+  $("gState").textContent = linked ? "Compte Garmin : connecté ✅" : (r.j.owner_env ? "Compte Garmin du serveur utilisé (propriétaire)." : "Compte Garmin : non connecté.");
+  $("gForm").classList.toggle("hide",linked);
+  $("gOff").classList.toggle("hide",!linked);
+}
+$("gGo").onclick = async()=>{
+  const mfa = !$("gMfa").classList.contains("hide");
+  $("gErr").textContent = "";
+  const r = mfa ? await api("/api/garmin/mfa","POST",{code:$("gCode").value.trim()})
+                : await api("/api/garmin/connect","POST",{email:$("gMail").value.trim(),password:$("gPw").value});
+  if(r.j.mfa_required){
+    $("gMfa").classList.remove("hide");
+    $("gGo").textContent = "Valider le code";
+    $("gErr").textContent = "Garmin t’a envoyé un code : saisis-le puis valide.";
+    return;
+  }
+  if(!r.ok || !r.j.success){ $("gErr").textContent = r.j.error || "Erreur."; return; }
+  $("gPw").value = ""; $("gCode").value = "";
+  $("gMfa").classList.add("hide");
+  $("gGo").textContent = "Connecter mon compte Garmin";
+  gRefresh();
+};
+$("gOff").onclick = async()=>{
+  if(confirm("Déconnecter ton compte Garmin ?")){ await api("/api/garmin/disconnect","POST"); gRefresh(); }
+};
+$("pGo").onclick = async()=>{
+  const r = await api("/api/profile/password","POST",{current:$("pCur").value,new:$("pNew").value});
+  $("pMsg").textContent = r.ok ? "Mot de passe modifié." : (r.j.error || "Erreur.");
+  if(r.ok){ $("pCur").value = ""; $("pNew").value = ""; }
+};
+$("dGo").onclick = async()=>{
+  if(!confirm("Supprimer définitivement ton compte et toutes tes séances ?")) return;
+  const r = await api("/api/profile/delete","POST",{password:$("dPw").value});
+  if(r.ok) location.href = "/"; else $("dErr").textContent = r.j.error || "Erreur.";
+};
+gRefresh();
+</script></body></html>
