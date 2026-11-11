@@ -784,9 +784,9 @@ def purge_user(user):
     Workout.query.filter_by(user_id=user.id).delete()
     GarminLink.query.filter_by(user_id=user.id).delete()
     PasswordReset.query.filter_by(user_id=user.id).delete()
-      for p in Plan.query.filter_by(user_id=user.id).all():
-        PlanDay.query.filter_by(plan_id=p.id).delete()
-        db.session.delete(p)
+    for p in Plan.query.filter_by(user_id=user.id).all():
+      PlanDay.query.filter_by(plan_id=p.id).delete()
+      db.session.delete(p)
     db.session.delete(user)
     db.session.commit()
 
