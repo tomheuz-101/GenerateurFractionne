@@ -1,27 +1,232 @@
 
 import os
+import json
+import hmac
+import time
+import base64
+import hashlib
 import tempfile
 import math
+from datetime import datetime, timezone
+from functools import wraps
 
-from flask import Flask, request, jsonify, render_template, send_file
-from werkzeug.utils import secure_filename
+from flask import Flask, request, jsonify, render_template, send_file, session
+from flask_sqlalchemy import SQLAlchemy
+from cryptography.fernet import Fernet, InvalidToken
+from werkzeug.security import generate_password_hash, check_password_hash
 from garminconnect import Garmin
 
 from fit_tool.fit_file_builder import FitFileBuilder
 from fit_tool.profile.messages.file_id_message import FileIdMessage
 from fit_tool.profile.messages.workout_message import WorkoutMessage
 from fit_tool.profile.messages.workout_step_message import WorkoutStepMessage
-from fit_tool.profile.profile_type import (
-    FileType,
-    Manufacturer,
-    Sport,
-    Intensity,
-    WorkoutStepDuration,
-    WorkoutStepTarget,
-)
+from fit_tool.profile.profile_type import FileType, Manufacturer, Sport, Intensity
 
 
 app = Flask(__name__)
+
+# --------------------------------------------------
+# BASE DE DONNEES ET COMPTES
+# --------------------------------------------------
+
+_uri = os.environ.get("DATABASE_URL", "sqlite:///fractionne.db")
+if _uri.startswith("postgres://"):
+    _uri = _uri.replace("postgres://", "postgresql://", 1)
+
+app.config["SQLALCHEMY_DATABASE_URI"] = _uri
+app.config["SECRET_KEY"] = os.environ.get("SECRET_KEY", "dev-a-changer")
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+app.config["SESSION_COOKIE_SECURE"] = bool(os.environ.get("RENDER"))
+
+db = SQLAlchemy(app)
+
+
+class User(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(200), unique=True, nullable=False)
+    pw = db.Column(db.String(300), nullable=False)
+
+
+class Workout(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"),
+                        nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    data = db.Column(db.Text, nullable=False)
+    updated = db.Column(
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc))
+
+
+class GarminLink(db.Model):
+    """Lien Garmin d'un utilisateur : jetons et état MFA, toujours chiffrés."""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"),
+                        unique=True, nullable=False)
+    tokens = db.Column(db.Text)
+    pending = db.Column(db.Text)
+    pending_at = db.Column(db.Float)
+
+
+with app.app_context():
+    db.create_all()
+
+
+def login_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not session.get("uid"):
+            return jsonify(success=False, error="Connexion requise."), 401
+        return f(*args, **kwargs)
+    return wrapper
+
+
+def current_user():
+    uid = session.get("uid")
+    return db.session.get(User, uid) if uid else None
+
+
+def is_owner(user):
+    owner = os.environ.get("OWNER_EMAIL", "").strip().lower()
+    return bool(user and owner and user.email == owner)
+
+
+@app.post("/api/register")
+def register():
+    d = request.get_json(silent=True) or {}
+    email = (d.get("email") or "").strip().lower()
+    pw = d.get("password") or ""
+    invite = os.environ.get("INVITE_CODE", "")
+
+    allowed = is_owner(User(email=email)) or (
+        invite and hmac.compare_digest(str(d.get("invite") or ""), invite))
+    if not allowed:
+        return jsonify(success=False,
+                       error="Inscription sur invitation : code invalide."), 403
+    if "@" not in email or len(pw) < 8:
+        return jsonify(success=False,
+                       error="E-mail invalide ou mot de passe trop court "
+                             "(8 caractères minimum)."), 400
+    if User.query.filter_by(email=email).first():
+        return jsonify(success=False,
+                       error="Un compte existe déjà avec cet e-mail."), 409
+
+    user = User(email=email, pw=generate_password_hash(pw))
+    db.session.add(user)
+    db.session.commit()
+    session["uid"] = user.id
+    return jsonify(success=True, email=email)
+
+
+@app.post("/api/login")
+def login():
+    d = request.get_json(silent=True) or {}
+    email = (d.get("email") or "").strip().lower()
+    user = User.query.filter_by(email=email).first()
+    if not user or not check_password_hash(user.pw, d.get("password") or ""):
+        return jsonify(success=False,
+                       error="E-mail ou mot de passe incorrect."), 401
+    session["uid"] = user.id
+    return jsonify(success=True, email=user.email)
+
+
+@app.post("/api/logout")
+def logout():
+    session.clear()
+    return jsonify(success=True)
+
+
+@app.get("/api/me")
+def me():
+    user = current_user()
+    if not user:
+        return jsonify(success=False), 401
+    return jsonify(success=True, email=user.email)
+
+
+# --------------------------------------------------
+# BIBLIOTHEQUE DE SEANCES
+# --------------------------------------------------
+
+def workout_json(w):
+    return {"id": w.id, "name": w.name, "data": json.loads(w.data),
+            "updated": w.updated.isoformat() if w.updated else None}
+
+
+def read_workout_body():
+    d = request.get_json(silent=True) or {}
+    name = (d.get("name") or "").strip()[:120]
+    data = d.get("data")
+    if not name:
+        return None, None, "Donne un nom à la séance."
+    if (not isinstance(data, dict)
+            or not isinstance(data.get("steps"), list)
+            or not data["steps"] or len(data["steps"]) > 300):
+        return None, None, "Séance invalide."
+    return name, data, None
+
+
+def own_workout(wid):
+    return Workout.query.filter_by(id=wid, user_id=session["uid"]).first()
+
+
+@app.get("/api/workouts")
+@login_required
+def list_workouts():
+    rows = (Workout.query.filter_by(user_id=session["uid"])
+            .order_by(Workout.updated.desc()).all())
+    return jsonify(success=True, workouts=[workout_json(w) for w in rows])
+
+
+@app.post("/api/workouts")
+@login_required
+def create_workout():
+    name, data, err = read_workout_body()
+    if err:
+        return jsonify(success=False, error=err), 400
+    w = Workout(user_id=session["uid"], name=name, data=json.dumps(data))
+    db.session.add(w)
+    db.session.commit()
+    return jsonify(success=True, workout=workout_json(w))
+
+
+@app.put("/api/workouts/<int:wid>")
+@login_required
+def update_workout(wid):
+    w = own_workout(wid)
+    if not w:
+        return jsonify(success=False, error="Séance introuvable."), 404
+    name, data, err = read_workout_body()
+    if err:
+        return jsonify(success=False, error=err), 400
+    w.name, w.data = name, json.dumps(data)
+    db.session.commit()
+    return jsonify(success=True, workout=workout_json(w))
+
+
+@app.post("/api/workouts/<int:wid>/duplicate")
+@login_required
+def duplicate_workout(wid):
+    w = own_workout(wid)
+    if not w:
+        return jsonify(success=False, error="Séance introuvable."), 404
+    copy = Workout(user_id=w.user_id, name=(w.name + " (copie)")[:120],
+                   data=w.data)
+    db.session.add(copy)
+    db.session.commit()
+    return jsonify(success=True, workout=workout_json(copy))
+
+
+@app.delete("/api/workouts/<int:wid>")
+@login_required
+def delete_workout(wid):
+    w = own_workout(wid)
+    if not w:
+        return jsonify(success=False, error="Séance introuvable."), 404
+    db.session.delete(w)
+    db.session.commit()
+    return jsonify(success=True)
 
 
 @app.route("/")
@@ -30,7 +235,139 @@ def index():
 
 
 # --------------------------------------------------
-# CONSTRUCTION DES ETAPES GARMIN CONNECT
+# COMPTE GARMIN DE CHAQUE UTILISATEUR
+# --------------------------------------------------
+# Le mot de passe Garmin sert une seule fois, pour obtenir des jetons.
+# Seuls ces jetons sont conservés, chiffrés (Fernet) avec TOKEN_KEY.
+
+def _fernet():
+    key = os.environ.get("TOKEN_KEY")
+    if not key:
+        raw = hashlib.sha256(app.config["SECRET_KEY"].encode()).digest()
+        key = base64.urlsafe_b64encode(raw)
+    return Fernet(key)
+
+
+def enc(text):
+    return _fernet().encrypt(text.encode()).decode()
+
+
+def dec(text):
+    try:
+        return _fernet().decrypt(text.encode()).decode()
+    except InvalidToken:
+        raise ValueError(
+            "Jetons Garmin illisibles : reconnecte ton compte Garmin.")
+
+
+def get_link(create=False):
+    link = GarminLink.query.filter_by(user_id=session["uid"]).first()
+    if not link and create:
+        link = GarminLink(user_id=session["uid"])
+        db.session.add(link)
+    return link
+
+
+def save_tokens(link, client):
+    link.tokens = enc(client.client.dumps())
+    link.pending = None
+    link.pending_at = None
+    db.session.commit()
+
+
+def garmin_client_for(user):
+    link = GarminLink.query.filter_by(user_id=user.id).first()
+
+    if link and link.tokens:
+        stored = dec(link.tokens)
+        client = Garmin()
+        client.login(tokenstore=stored)
+        fresh = client.client.dumps()
+        if fresh != stored:
+            link.tokens = enc(fresh)
+            db.session.commit()
+        return client
+
+    if (is_owner(user) and os.environ.get("GARMIN_EMAIL")
+            and os.environ.get("GARMIN_PASSWORD")):
+        client = Garmin(os.environ["GARMIN_EMAIL"],
+                        os.environ["GARMIN_PASSWORD"])
+        client.login()
+        return client
+
+    raise PermissionError(
+        "Compte Garmin non connecté : connecte-le dans la bibliothèque.")
+
+
+@app.get("/api/garmin/status")
+@login_required
+def garmin_status():
+    link = get_link()
+    owner_env = bool(is_owner(current_user())
+                     and os.environ.get("GARMIN_EMAIL"))
+    return jsonify(success=True, linked=bool(link and link.tokens),
+                   owner_env=owner_env)
+
+
+@app.post("/api/garmin/connect")
+@login_required
+def garmin_connect():
+    d = request.get_json(silent=True) or {}
+    email = (d.get("email") or "").strip()
+    password = d.get("password") or ""
+    if not email or not password:
+        return jsonify(success=False,
+                       error="E-mail et mot de passe Garmin requis."), 400
+    try:
+        client = Garmin(email, password, return_on_mfa=True)
+        status, state = client.login()
+        link = get_link(create=True)
+        if status == "needs_mfa":
+            link.pending = enc(json.dumps(state))
+            link.pending_at = time.time()
+            db.session.commit()
+            return jsonify(success=False, mfa_required=True,
+                           error="Garmin demande un code de vérification.")
+        save_tokens(link, client)
+        return jsonify(success=True, linked=True)
+    except Exception as e:
+        app.logger.exception("Connexion Garmin impossible")
+        return jsonify(success=False,
+                       error="Connexion Garmin refusée : " + str(e)[:150]), 400
+
+
+@app.post("/api/garmin/mfa")
+@login_required
+def garmin_mfa():
+    code = ((request.get_json(silent=True) or {}).get("code") or "").strip()
+    link = get_link()
+    if (not link or not link.pending
+            or time.time() - (link.pending_at or 0) > 600):
+        return jsonify(success=False,
+                       error="Demande expirée : recommence la connexion."), 400
+    try:
+        client = Garmin()
+        client.resume_login(json.loads(dec(link.pending)), code)
+        save_tokens(link, client)
+        return jsonify(success=True, linked=True)
+    except Exception as e:
+        app.logger.exception("Code MFA Garmin refusé")
+        return jsonify(success=False,
+                       error="Code refusé : " + str(e)[:150]), 400
+
+
+@app.post("/api/garmin/disconnect")
+@login_required
+def garmin_disconnect():
+    link = get_link()
+    if link:
+        db.session.delete(link)
+        db.session.commit()
+    return jsonify(success=True)
+
+
+# --------------------------------------------------
+# CONSTRUCTION DES ETAPES GARMIN
 # --------------------------------------------------
 
 def build_garmin_steps(raw_steps):
@@ -82,6 +419,7 @@ def build_garmin_steps(raw_steps):
             condition_key = "distance"
             condition_order = 3
 
+        # Cible par défaut : aucune cible
         target_type = {
             "workoutTargetTypeId": 1,
             "workoutTargetTypeKey": "no.target",
@@ -89,6 +427,10 @@ def build_garmin_steps(raw_steps):
         }
 
         extra_target_fields = {}
+
+        # ------------------------------------------
+        # CIBLE D'ALLURE POUR LES EFFORTS
+        # ------------------------------------------
 
         if step_type == "interval":
 
@@ -98,6 +440,8 @@ def build_garmin_steps(raw_steps):
             has_min = pace_min_raw is not None and pace_min_raw != ""
             has_max = pace_max_raw is not None and pace_max_raw != ""
 
+            # Les deux bornes doivent être renseignées
+            # ou aucune des deux.
             if has_min != has_max:
                 raise ValueError(
                     f"Les deux bornes d'allure doivent être renseignées "
@@ -109,6 +453,7 @@ def build_garmin_steps(raw_steps):
                 try:
                     pace_min = float(pace_min_raw)
                     pace_max = float(pace_max_raw)
+
                 except (TypeError, ValueError):
                     raise ValueError(
                         f"Allure invalide à l'étape {index}."
@@ -131,6 +476,14 @@ def build_garmin_steps(raw_steps):
                         f"ou égale à l'allure maximale à l'étape {index}."
                     )
 
+                # Garmin attend des mètres par seconde.
+                #
+                # pace_min = allure la plus rapide
+                # pace_max = allure la plus lente
+                #
+                # La vitesse la plus lente est donc
+                # la valeur numérique la plus petite.
+
                 speed_min = 1000.0 / pace_max
                 speed_max = 1000.0 / pace_min
 
@@ -144,6 +497,10 @@ def build_garmin_steps(raw_steps):
                     "targetValueOne": speed_min,
                     "targetValueTwo": speed_max
                 }
+
+        # ------------------------------------------
+        # ETAPE GARMIN
+        # ------------------------------------------
 
         formatted_step = {
             "type": "ExecutableStepDTO",
@@ -163,10 +520,13 @@ def build_garmin_steps(raw_steps):
             },
 
             "endConditionValue": value,
+
             "targetType": target_type
         }
 
+        # Ajout des bornes d'allure si elles existent.
         formatted_step.update(extra_target_fields)
+
         formatted_steps.append(formatted_step)
 
     return formatted_steps
@@ -177,21 +537,13 @@ def build_garmin_steps(raw_steps):
 # --------------------------------------------------
 
 @app.route("/api/send-to-garmin", methods=["POST"])
+@login_required
 def send_to_garmin():
 
     data = request.get_json(silent=True) or {}
 
-    email = data.get("email") or os.environ.get("GARMIN_EMAIL")
-    password = data.get("password") or os.environ.get("GARMIN_PASSWORD")
-
     workout_name = data.get("name", "Séance Fractionnée")
     raw_steps = data.get("steps", [])
-
-    if not email or not password:
-        return jsonify({
-            "success": False,
-            "error": "Identifiants Garmin manquants."
-        }), 400
 
     if not isinstance(raw_steps, list) or not raw_steps:
         return jsonify({
@@ -201,6 +553,7 @@ def send_to_garmin():
 
     try:
 
+        # Construction des étapes et de leurs cibles
         formatted_steps = build_garmin_steps(raw_steps)
 
         sport_type = {
@@ -229,9 +582,10 @@ def send_to_garmin():
             ]
         }
 
-        client = Garmin(email, password)
-        client.login()
+        # Connexion à Garmin
+        client = garmin_client_for(current_user())
 
+        # Envoi de la séance
         result = client.upload_workout(workout_payload)
 
         if not isinstance(result, dict):
@@ -251,6 +605,7 @@ def send_to_garmin():
                 "garmin_response": result
             }), 502
 
+        # Vérification de la présence dans Garmin Connect
         saved_workout = client.get_workout_by_id(workout_id)
 
         if (
@@ -266,6 +621,7 @@ def send_to_garmin():
                 "workout_id": workout_id
             }), 502
 
+        # Nombre de fractions comportant une cible d'allure
         pace_targets_count = sum(
             1 for step in raw_steps
             if (
@@ -304,254 +660,58 @@ def send_to_garmin():
 
 
 # --------------------------------------------------
-# VALIDATION DES ETAPES POUR LE FORMAT FIT
-# --------------------------------------------------
-
-def validate_fit_steps(steps):
-
-    if not isinstance(steps, list) or not steps:
-        raise ValueError(
-            "La séance ne contient aucune étape."
-        )
-
-    if len(steps) > 200:
-        raise ValueError(
-            "La séance contient trop d'étapes (maximum 200)."
-        )
-
-    valid_types = {
-        "warmup",
-        "interval",
-        "recovery",
-        "cooldown"
-    }
-
-    valid_kinds = {
-        "time",
-        "distance"
-    }
-
-    validated = []
-
-    for index, step in enumerate(steps, start=1):
-
-        if not isinstance(step, dict):
-            raise ValueError(
-                f"Format incorrect à l'étape {index}."
-            )
-
-        step_type = step.get("type")
-        kind = step.get("kind")
-
-        if step_type not in valid_types:
-            raise ValueError(
-                f"Type d'étape inconnu à l'étape {index}."
-            )
-
-        if kind not in valid_kinds:
-            raise ValueError(
-                f"Type de durée inconnu à l'étape {index}."
-            )
-
-        try:
-            value = float(step.get("value"))
-        except (TypeError, ValueError):
-            raise ValueError(
-                f"Valeur invalide à l'étape {index}."
-            )
-
-        if not math.isfinite(value) or value <= 0:
-            raise ValueError(
-                f"La valeur de l'étape {index} doit être positive."
-            )
-
-        pace_min_raw = step.get("paceMinSecPerKm")
-        pace_max_raw = step.get("paceMaxSecPerKm")
-
-        has_min = pace_min_raw is not None and pace_min_raw != ""
-        has_max = pace_max_raw is not None and pace_max_raw != ""
-
-        if step_type != "interval" and (has_min or has_max):
-            raise ValueError(
-                f"Une cible d'allure ne peut être définie "
-                f"que sur un effort (étape {index})."
-            )
-
-        pace_min = None
-        pace_max = None
-
-        if has_min != has_max:
-            raise ValueError(
-                f"Les deux bornes d'allure doivent être renseignées "
-                f"à l'étape {index}."
-            )
-
-        if has_min and has_max:
-
-            try:
-                pace_min = float(pace_min_raw)
-                pace_max = float(pace_max_raw)
-            except (TypeError, ValueError):
-                raise ValueError(
-                    f"Allure invalide à l'étape {index}."
-                )
-
-            if (
-                not math.isfinite(pace_min)
-                or not math.isfinite(pace_max)
-                or pace_min <= 0
-                or pace_max <= 0
-            ):
-                raise ValueError(
-                    f"Les allures de l'étape {index} "
-                    f"doivent être positives."
-                )
-
-            if pace_min > pace_max:
-                raise ValueError(
-                    f"L'allure minimale doit être inférieure "
-                    f"ou égale à l'allure maximale à l'étape {index}."
-                )
-
-        validated.append({
-            "type": step_type,
-            "kind": kind,
-            "value": value,
-            "pace_min": pace_min,
-            "pace_max": pace_max
-        })
-
-    return validated
-
-
-# --------------------------------------------------
 # EXPORT AU FORMAT FIT
 # --------------------------------------------------
 
 @app.route("/api/export-fit", methods=["POST"])
 def export_fit():
 
-    tmp_path = None
-
     try:
 
         data = request.get_json(silent=True) or {}
 
-        workout_name = str(
-            data.get("name") or "Séance Fractionnée"
-        ).strip()
+        workout_name = data.get("name", "Séance Fractionnée")
+        steps = data.get("steps", [])
 
-        if not workout_name:
-            workout_name = "Séance Fractionnée"
-
-        raw_steps = data.get("steps", [])
-        steps = validate_fit_steps(raw_steps)
+        if not isinstance(steps, list) or not steps:
+            return jsonify({
+                "success": False,
+                "error": "La séance ne contient aucune étape."
+            }), 400
 
         builder = FitFileBuilder(auto_define=True)
 
         # 1. Identifiant du fichier
-
         file_id = FileIdMessage()
         file_id.type = FileType.WORKOUT
         file_id.manufacturer = Manufacturer.DEVELOPMENT.value
         file_id.product = 0
         file_id.serial_number = 12345
-
         builder.add(file_id)
 
         # 2. Entraînement
-
         workout_msg = WorkoutMessage()
         workout_msg.wkt_name = workout_name
         workout_msg.sport = Sport.RUNNING
         workout_msg.num_valid_steps = len(steps)
-
         builder.add(workout_msg)
 
         # 3. Étapes
-
-        names = {
-            "warmup": "Échauffement",
-            "interval": "Effort",
-            "recovery": "Récupération",
-            "cooldown": "Retour au calme"
-        }
-
-        intensities = {
-            "warmup": Intensity.WARMUP,
-            "interval": Intensity.ACTIVE,
-            "recovery": Intensity.RECOVERY,
-            "cooldown": Intensity.COOLDOWN
-        }
-
-        pace_targets_count = 0
-
         for index, step in enumerate(steps):
 
             step_msg = WorkoutStepMessage()
-
             step_msg.message_index = index
-            step_msg.intensity = intensities[step["type"]]
+            step_msg.wkt_step_name = step.get("type", "interval")
+            step_msg.intensity = Intensity.ACTIVE
 
-            # Nom lisible de l'étape
+            duration_val = float(step.get("value", 0))
 
-            if step["kind"] == "time":
-                detail = f'{step["value"]:g} s'
+            if step.get("kind") == "time":
+                step_msg.duration_time = duration_val * 1000
             else:
-                detail = f'{step["value"]:g} m'
-
-            step_msg.wkt_step_name = (
-                f'{names[step["type"]]} {detail}'
-            )
-
-            # Durée ou distance
-            # IMPORTANT : les valeurs sont exprimées directement
-            # en secondes et en mètres. fit-tool effectue la conversion.
-
-            if step["kind"] == "time":
-
-                step_msg.duration_type = WorkoutStepDuration.TIME
-                step_msg.duration_time = step["value"]
-
-            else:
-
-                step_msg.duration_type = WorkoutStepDuration.DISTANCE
-                step_msg.duration_distance = step["value"]
-
-            # Cible par défaut : aucune cible
-
-            step_msg.target_type = WorkoutStepTarget.OPEN
-            step_msg.target_value = 0
-
-            # Cible d'allure sur les efforts uniquement
-
-            if (
-                step["type"] == "interval"
-                and step["pace_min"] is not None
-                and step["pace_max"] is not None
-            ):
-
-                # FIT attend des vitesses en mètres par seconde.
-                #
-                # pace_min = allure la plus rapide
-                # pace_max = allure la plus lente
-                #
-                # La limite basse correspond donc à pace_max.
-
-                speed_low = 1000.0 / step["pace_max"]
-                speed_high = 1000.0 / step["pace_min"]
-
-                step_msg.target_type = WorkoutStepTarget.SPEED
-                step_msg.target_value = 0
-
-                step_msg.custom_target_speed_low = speed_low
-                step_msg.custom_target_speed_high = speed_high
-
-                pace_targets_count += 1
+                step_msg.duration_distance = duration_val * 1000
 
             builder.add(step_msg)
-
-        # 4. Génération du fichier FIT
 
         fit_file = builder.build()
 
@@ -559,46 +719,20 @@ def export_fit():
             delete=False,
             suffix=".fit"
         ) as tmp:
-
             tmp_path = tmp.name
 
         fit_file.to_file(tmp_path)
 
-        safe_name = secure_filename(workout_name)
-        if not safe_name:
-            safe_name = "seance_fractionnee"
+        filename = f"{workout_name.replace(' ', '_')}.fit"
 
-        filename = f"{safe_name}.fit"
-
-        response = send_file(
+        return send_file(
             tmp_path,
             mimetype="application/octet-stream",
             as_attachment=True,
             download_name=filename
         )
 
-        # Suppression du fichier temporaire après téléchargement
-
-        response.call_on_close(
-            lambda: (
-                os.remove(tmp_path)
-                if tmp_path and os.path.exists(tmp_path)
-                else None
-            )
-        )
-
-        app.logger.info(
-            "Export FIT généré : %s étapes, %s cibles d'allure",
-            len(steps),
-            pace_targets_count
-        )
-
-        return response
-
     except Exception as e:
-
-        if tmp_path and os.path.exists(tmp_path):
-            os.remove(tmp_path)
 
         app.logger.exception(
             "Erreur lors de la génération du fichier FIT"
