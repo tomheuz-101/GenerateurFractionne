@@ -1,3 +1,6 @@
+import smtplib
+import ssl
+from email.message import EmailMessage
 import urllib.request
 import os
 import json
@@ -325,33 +328,47 @@ def page_reset():
 
 
 # --------------------------------------------------
-# E-MAIL (RESEND)
+# E-MAIL (BREVO SMTP)
 # --------------------------------------------------
 
 def send_email(to, subject, text):
-    api_key = os.environ.get("RESEND_API_KEY")
+    smtp_host = os.environ.get("SMTP_HOST", "smtp-relay.brevo.com")
+    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
+    smtp_login = os.environ.get("SMTP_LOGIN")
+    smtp_key = os.environ.get("SMTP_KEY")
     mail_from = os.environ.get("MAIL_FROM", "")
-    if not api_key or not mail_from:
-        app.logger.error("RESEND_API_KEY ou MAIL_FROM manquant : e-mail non envoyé")
+
+    if not all([smtp_login, smtp_key, mail_from]):
+        app.logger.error(
+            "Configuration SMTP Brevo incomplète."
+        )
         raise RuntimeError("Envoi d'e-mail non configuré.")
 
-    body = json.dumps({
-        "from": mail_from,
-        "to": [to],
-        "subject": subject,
-        "text": text,
-    }).encode()
+    # Construction du message
+    msg = EmailMessage()
+    msg["From"] = mail_from
+    msg["To"] = to
+    msg["Subject"] = subject
+    msg.set_content(text)
 
-    req = urllib.request.Request(
-        "https://api.resend.com/emails",
-        data=body,
-        headers={
-            "Authorization": "Bearer " + api_key,
-            "Content-Type": "application/json",
-        },
-        method="POST")
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        resp.read()
+    # Connexion sécurisée à Brevo
+    context = ssl.create_default_context()
+
+    with smtplib.SMTP(
+        smtp_host,
+        smtp_port,
+        timeout=15
+    ) as server:
+
+        server.ehlo()
+        server.starttls(context=context)
+        server.ehlo()
+
+        server.login(smtp_login, smtp_key)
+
+        server.send_message(msg)
+
+    app.logger.info("E-mail envoyé avec succès via Brevo.")
 
 
 # --------------------------------------------------
