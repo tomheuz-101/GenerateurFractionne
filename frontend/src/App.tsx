@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import type { FormEvent } from 'react';
 import { api } from './api';
 import Creator from './Creator';
 import Library from './Library';
@@ -99,7 +100,7 @@ function Login({ onLogged }: { onLogged: (me: Me) => void }) {
   const [invite, setInvite] = useState('');
   const [err, setErr] = useState('');
 
-  const submit = async (e: React.FormEvent) => {
+  const submit = async (e: FormEvent) => {
     e.preventDefault();
     setErr('');
     if (tab === 'register' && password.length < 12) {
