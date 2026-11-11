@@ -11,20 +11,26 @@ document.addEventListener("DOMContentLoaded",()=>{
   const o=document.getElementById("navOut");
   if(o)o.onclick=async e=>{e.preventDefault();await api("/api/logout","POST");location.href="/"};
 
-  // Menu latéral repliable
+    // Menu latéral repliable
   const sb=document.getElementById("sb");
   const t=document.getElementById("sbToggle");
   const ov=document.getElementById("sbOverlay");
   if(!sb||!t)return;
-  let open=innerWidth>760&&localStorage.getItem("sb")!=="0";
+
+  let stored=null;
+  try{stored=localStorage.getItem("sb")}catch(e){}
+  let open=innerWidth>760&&stored!=="0";
+
   const apply=()=>{
     document.body.classList.toggle("sb-open",open);
     document.body.classList.toggle("sb-closed",!open);
     t.setAttribute("aria-expanded",String(open));
   };
+  const save=v=>{try{localStorage.setItem("sb",v)}catch(e){}};
+
   apply();
-  t.onclick=()=>{open=!open;localStorage.setItem("sb",open?"1":"0");apply();};
-  if(ov)ov.onclick=()=>{open=false;localStorage.setItem("sb","0");apply();};
+  t.onclick=()=>{open=!open;save(open?"1":"0");apply();};
+  if(ov)ov.onclick=()=>{open=false;save("0");apply();};
   sb.querySelectorAll("a").forEach(a=>a.addEventListener("click",()=>{
     if(innerWidth<=760){open=false;apply();}
   }));
