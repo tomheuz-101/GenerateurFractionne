@@ -196,3 +196,14 @@ details.card[open] summary{margin-bottom:8px}
   body.sb-open .sb{transform:none}
   body.sb-open .sb-overlay{display:block}
 }
+
+/* ---------- Planning ---------- */
+.pday{display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--bd)}
+.pday:last-child{border-bottom:0}
+.pday .dt{width:92px;flex:none;font-weight:600;font-size:13px;line-height:1.2}
+.pday .dt small{font-weight:400;color:var(--mu)}
+.pday select{flex:1;min-width:0}
+.pday .lb{flex:1;min-width:0}
+.pday.done .dt,.pday.done .lb{text-decoration:line-through;opacity:.55}
+details.wk{border:1px solid var(--bd);border-radius:10px;padding:8px 12px;margin-bottom:8px}
+details.wk summary{cursor:pointer;font:700 16px "Barlow Condensed",sans-serif}
