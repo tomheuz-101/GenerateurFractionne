@@ -45,47 +45,67 @@ export class AuthService {
       );
     }
 
-    let inviteId: number | null = null;
+    // Hors administrateur : valider le code d'invitation AVANT la transaction
+    let invite: { id: number; email: string | null } | null = null;
     if (!this.isAdmin(email)) {
       const code = (dto.inviteCode ?? '').trim();
       if (!code) {
         throw new BadRequestException('Un code d’invitation est requis.');
       }
 
-      const invite = await this.prisma.invite.findUnique({
+      const found = await this.prisma.invite.findUnique({
         where: { codeHash: this.hashToken(code) },
       });
 
       if (
-        !invite ||
-        invite.usedAt ||
-        (invite.expiresAt && invite.expiresAt <= new Date())
+        !found ||
+        found.usedAt ||
+        (found.expiresAt && found.expiresAt <= new Date())
       ) {
         throw new BadRequestException('Code d’invitation invalide ou expiré.');
       }
 
-      if (invite.email && invite.email.toLowerCase() !== email) {
+      if (found.email && found.email.toLowerCase() !== email) {
         throw new BadRequestException(
           'Ce code d’invitation est réservé à une autre adresse.',
         );
       }
 
-      inviteId = invite.id;
+      invite = { id: found.id, email: found.email };
     }
 
-    const user = await this.prisma.user.create({
-      data: {
-        email,
-        password: await this.passwordService.hash(dto.password),
-      },
-    });
+    const password = await this.passwordService.hash(dto.password);
 
-    if (inviteId !== null) {
-      await this.prisma.invite.update({
-        where: { id: inviteId },
-        data: { usedById: user.id, usedAt: new Date() },
+    // Transaction : création du compte + consommation de l'invitation
+    // sont atomicques ; une même invitation ne peut pas servir deux fois.
+    const user = await this.prisma.$transaction(async (tx) => {
+      if (invite) {
+        // Reprendre l'invitation DANS la transaction avec un verrou logique :
+        // la contrainte usedAt est re-vérifiée via updateMany conditionnel.
+        const consumed = await tx.invite.updateMany({
+          where: { id: invite.id, usedAt: null },
+          data: { usedAt: new Date() },
+        });
+        if (consumed.count === 0) {
+          throw new BadRequestException(
+            'Code d’invitation invalide ou expiré.',
+          );
+        }
+      }
+
+      const created = await tx.user.create({
+        data: { email, password },
       });
-    }
+
+      if (invite) {
+        await tx.invite.update({
+          where: { id: invite.id },
+          data: { usedById: created.id },
+        });
+      }
+
+      return created;
+    });
 
     return user;
   }

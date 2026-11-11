@@ -92,7 +92,7 @@ export default function Login({ onLoggedIn }: Props) {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
-          minLength={mode === 'register' ? 8 : undefined}
+          minLength={mode === 'register' ? 12 : undefined}
           required
         />
 
@@ -121,7 +121,7 @@ export default function Login({ onLoggedIn }: Props) {
 
         {mode === 'register' && (
           <p className="auth-note">
-            Mot de passe : 8 caractères minimum.
+            Mot de passe : 12 caractères minimum.
           </p>
         )}
       </form>
