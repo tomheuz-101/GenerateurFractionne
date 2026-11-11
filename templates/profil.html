@@ -8,7 +8,15 @@
 {% include "_nav.html" %}
 <h1>Profil</h1>
 <div class="card"><h2>Compte</h2><p style="margin:0">Connecté en tant que <b>{{ me.email }}</b></p></div>
-
+<div class="card">
+  <h2>VMA</h2>
+  <p class="note" style="margin-bottom:8px">Ta Vitesse Maximale Aérobie (km/h) sert à pré-remplir les allures cibles dans le créateur.</p>
+  <div class="grid">
+    <label>VMA (km/h)<input id="vmaIn" type="number" step="0.1" min="8" max="30" inputmode="decimal"></label>
+    <div style="display:flex;align-items:flex-end"><button class="copy" id="vmaGo" style="margin:0;width:100%">Enregistrer la VMA</button></div>
+  </div>
+  <p class="note" id="vmaMsg" style="margin-top:6px"></p>
+</div>
 <div class="card">
   <h2>Compte Garmin</h2>
   <p class="note" id="gState" style="margin-bottom:6px"></p>
@@ -46,6 +54,16 @@
 <script src="/static/common.js"></script>
 <script>
 const $ = id => document.getElementById(id);
+(async()=>{
+  const r = await api("/api/me");
+  if(r.ok && r.j.vma) $("vmaIn").value = r.j.vma;
+})();
+$("vmaGo").onclick = async()=>{
+  const v = parseFloat($("vmaIn").value);
+  if(!(v>=8 && v<=30)){ $("vmaMsg").textContent = "VMA invalide (8 à 30 km/h)."; return; }
+  const r = await api("/api/profile/vma","POST",{vma:v});
+  $("vmaMsg").textContent = r.ok ? "VMA enregistrée ✅" : (r.j.error || "Erreur.");
+};  
 async function gRefresh(){
   const r = await api("/api/garmin/status");
   const linked = !!r.j.linked;
