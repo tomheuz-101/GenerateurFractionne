@@ -5,3 +5,4 @@ psycopg2-binary
 garminconnect==0.3.20
 fit-tool==0.9.17
 cryptography
+psycopg[binary]
