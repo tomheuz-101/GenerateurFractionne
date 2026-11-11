@@ -327,48 +327,45 @@ def page_reset():
     return render_page("reinitialisation.html", "reset", auth=False)
 
 
+
 # --------------------------------------------------
-# E-MAIL (BREVO SMTP)
+# E-MAIL (BREVO API)
 # --------------------------------------------------
 
 def send_email(to, subject, text):
-    smtp_host = os.environ.get("SMTP_HOST", "smtp-relay.brevo.com")
-    smtp_port = int(os.environ.get("SMTP_PORT", "587"))
-    smtp_login = os.environ.get("SMTP_LOGIN")
-    smtp_key = os.environ.get("SMTP_KEY")
+    api_key = os.environ.get("BREVO_API_KEY")
     mail_from = os.environ.get("MAIL_FROM", "")
 
-    if not all([smtp_login, smtp_key, mail_from]):
-        app.logger.error(
-            "Configuration SMTP Brevo incomplète."
-        )
+    if not api_key or not mail_from:
+        app.logger.error("Configuration API Brevo incomplète.")
         raise RuntimeError("Envoi d'e-mail non configuré.")
 
-    # Construction du message
-    msg = EmailMessage()
-    msg["From"] = mail_from
-    msg["To"] = to
-    msg["Subject"] = subject
-    msg.set_content(text)
+    body = json.dumps({
+        "sender": {
+            "name": "Générateur de fractionné",
+            "email": mail_from
+        },
+        "to": [
+            {"email": to}
+        ],
+        "subject": subject,
+        "textContent": text
+    }).encode("utf-8")
 
-    # Connexion sécurisée à Brevo
-    context = ssl.create_default_context()
+    req = urllib.request.Request(
+        "https://api.brevo.com/v3/smtp/email",
+        data=body,
+        headers={
+            "api-key": api_key,
+            "Content-Type": "application/json",
+            "Accept": "application/json"
+        },
+        method="POST"
+    )
 
-    with smtplib.SMTP(
-        smtp_host,
-        smtp_port,
-        timeout=15
-    ) as server:
-
-        server.ehlo()
-        server.starttls(context=context)
-        server.ehlo()
-
-        server.login(smtp_login, smtp_key)
-
-        server.send_message(msg)
-
-    app.logger.info("E-mail envoyé avec succès via Brevo.")
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        response = resp.read().decode("utf-8")
+        app.logger.info("E-mail envoyé via Brevo API : %s", response)
 
 
 # --------------------------------------------------
