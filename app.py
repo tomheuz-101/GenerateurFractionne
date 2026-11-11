@@ -100,6 +100,27 @@ class PasswordReset(db.Model):
     token_hash = db.Column(db.String(64), unique=True, nullable=False)
     created_at = db.Column(db.Float, nullable=False)
 
+class Plan(db.Model):
+    """Plan d'entraînement multi-semaines d'un utilisateur."""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"),
+                        nullable=False, index=True)
+    name = db.Column(db.String(120), nullable=False)
+    weeks = db.Column(db.Integer, nullable=False, default=4)
+    start = db.Column(db.Date, nullable=False)
+
+
+class PlanDay(db.Model):
+    """Un jour d'un plan : séance de la bibliothèque ou texte libre."""
+    id = db.Column(db.Integer, primary_key=True)
+    plan_id = db.Column(db.Integer, db.ForeignKey("plan.id"),
+                        nullable=False, index=True)
+    week = db.Column(db.Integer, nullable=False)
+    weekday = db.Column(db.Integer, nullable=False)  # 1=lundi … 7=dimanche
+    workout_id = db.Column(db.Integer, db.ForeignKey("workout.id"))
+    label = db.Column(db.String(120))   # ex. "Repos", "Footing 45'"
+    done = db.Column(db.Boolean, default=False)
+
 with app.app_context():
     db.create_all()
     # Migration douce : ajoute la colonne vma si la base existait déjà
@@ -308,6 +329,125 @@ def delete_workout(wid):
     db.session.commit()
     return jsonify(success=True)
 
+# --------------------------------------------------
+# PLANNING D'ENTRAINEMENT
+# --------------------------------------------------
+
+def own_plan(pid):
+    return Plan.query.filter_by(id=pid, user_id=session["uid"]).first()
+
+
+def plan_json(p):
+    days = (PlanDay.query.filter_by(plan_id=p.id)
+            .order_by(PlanDay.week, PlanDay.weekday).all())
+    wids = [d.workout_id for d in days if d.workout_id]
+    names = ({w.id: w.name for w in
+              Workout.query.filter(Workout.id.in_(wids)).all()}
+             if wids else {})
+    return {
+        "id": p.id, "name": p.name, "weeks": p.weeks,
+        "start": p.start.isoformat(),
+        "days": [{
+            "id": d.id, "week": d.week, "weekday": d.weekday,
+            "workout_id": d.workout_id, "workout_name": names.get(d.workout_id),
+            "label": d.label, "done": bool(d.done)
+        } for d in days]
+    }
+
+
+@app.get("/planning")
+def page_planning():
+    return render_page("planning.html", "planning")
+
+
+@app.get("/api/plans")
+@login_required
+def list_plans():
+    rows = (Plan.query.filter_by(user_id=session["uid"])
+            .order_by(Plan.id.desc()).all())
+    return jsonify(success=True, plans=[plan_json(p) for p in rows])
+
+
+@app.post("/api/plans")
+@login_required
+def create_plan():
+    d = request.get_json(silent=True) or {}
+    name = (d.get("name") or "").strip()[:120]
+    try:
+        weeks = int(d.get("weeks"))
+    except (TypeError, ValueError):
+        weeks = 0
+    if not name:
+        return jsonify(success=False, error="Donne un nom au plan."), 400
+    if not 1 <= weeks <= 30:
+        return jsonify(success=False, error="Durée : 1 à 30 semaines."), 400
+    try:
+        start = datetime.strptime(d.get("start") or "", "%Y-%m-%d").date()
+    except ValueError:
+        start = datetime.now(timezone.utc).date()
+    p = Plan(user_id=session["uid"], name=name, weeks=weeks, start=start)
+    db.session.add(p)
+    db.session.flush()
+    for wk in range(1, weeks + 1):
+        for wd in range(1, 8):
+            db.session.add(PlanDay(plan_id=p.id, week=wk, weekday=wd))
+    db.session.commit()
+    return jsonify(success=True, plan=plan_json(p))
+
+
+@app.put("/api/plans/<int:pid>/days/<int:did>")
+@login_required
+def set_plan_day(pid, did):
+    p = own_plan(pid)
+    if not p:
+        return jsonify(success=False, error="Plan introuvable."), 404
+    day = PlanDay.query.filter_by(id=did, plan_id=p.id).first()
+    if not day:
+        return jsonify(success=False, error="Jour introuvable."), 404
+    d = request.get_json(silent=True) or {}
+    if "workout_id" in d:
+        wid = d.get("workout_id")
+        if wid is None:
+            day.workout_id = None
+        else:
+            w = own_workout(wid)
+            if not w:
+                return jsonify(success=False, error="Séance introuvable."), 404
+            day.workout_id = w.id
+            day.label = None
+    if "label" in d:
+        day.label = ((d.get("label") or "").strip() or None)
+        if day.label:
+            day.workout_id = None
+    day.done = False
+    db.session.commit()
+    return jsonify(success=True)
+
+
+@app.post("/api/plans/<int:pid>/days/<int:did>/done")
+@login_required
+def toggle_plan_day(pid, did):
+    p = own_plan(pid)
+    if not p:
+        return jsonify(success=False, error="Plan introuvable."), 404
+    day = PlanDay.query.filter_by(id=did, plan_id=p.id).first()
+    if not day:
+        return jsonify(success=False, error="Jour introuvable."), 404
+    day.done = bool((request.get_json(silent=True) or {}).get("done"))
+    db.session.commit()
+    return jsonify(success=True, done=day.done)
+
+
+@app.delete("/api/plans/<int:pid>")
+@login_required
+def delete_plan(pid):
+    p = own_plan(pid)
+    if not p:
+        return jsonify(success=False, error="Plan introuvable."), 404
+    PlanDay.query.filter_by(plan_id=p.id).delete()
+    db.session.delete(p)
+    db.session.commit()
+    return jsonify(success=True)
 
 @app.context_processor
 def inject_user():
@@ -644,6 +784,9 @@ def purge_user(user):
     Workout.query.filter_by(user_id=user.id).delete()
     GarminLink.query.filter_by(user_id=user.id).delete()
     PasswordReset.query.filter_by(user_id=user.id).delete()
+      for p in Plan.query.filter_by(user_id=user.id).all():
+        PlanDay.query.filter_by(plan_id=p.id).delete()
+        db.session.delete(p)
     db.session.delete(user)
     db.session.commit()
 
