@@ -16,12 +16,12 @@
 <h1>Générateur de fractionné</h1>
 
 <div class="card">
-  <h2>Modèles</h2>
+  <h2>1 - Modèles</h2>
   <div id="tpl" class="seg" style="grid-template-columns:repeat(2,1fr);margin:0"></div>
 </div>
 
 <div class="card">
-
+<h2>2 · Type et réglages</h2>
   <div class="seg" id="seg">
     <button data-t="normal" aria-pressed="false">Normal</button>
     <button data-t="pyramide" aria-pressed="true">Pyramide</button>
@@ -101,14 +101,16 @@
   <button class="mini" id="bAdd">+ Ajouter un bloc</button>
 </div>
 
+  <h2>3 · Aperçu</h2>
 <div class="card">
   <div id="bars" aria-label="Profil de la séance"></div>
+  <div id="axis"></div>
   <div id="sum"></div>
   <p class="note" id="est"></p>
 </div>
 
 <div class="card">
-  <h2>Étapes</h2>
+  <h2>4 - Étapes</h2>
   <p class="note" style="margin-bottom:8px">
     Modifie chaque étape : distance, durée et plage d'allure des efforts.
     Réorganise avec ↑ ↓, duplique avec ⧉, supprime avec ×.
@@ -118,7 +120,7 @@
 </div>
 
 <div class="card">
-  <h2>Ajouter une étape</h2>
+  <h2>5 - Ajouter une étape</h2>
   <div class="grid">
     <label>Type d'étape
       <select id="addType">
@@ -149,29 +151,25 @@
   </div>
 </div>
 
-<div class="card" style="padding:10px">
-  <button class="copy" id="send-garmin"
-    style="background:#df5320;width:100%;margin-bottom:8px">
-    Envoyer à Garmin Connect
-  </button>
-
-  <button class="copy" id="exportFitBtn"
-    style="background:#16a34a;width:100%">
-    Télécharger le fichier .fit
-  </button>
+<div class="actionbar">
+  <div class="in">
+    <button class="copy" id="send-garmin" style="background:#df5320;margin:0">📤 Garmin</button>
+    <button class="copy" id="exportFitBtn" style="background:#16a34a;margin:0">⬇ .fit</button>
+    <button class="copy" id="wSaveBtn" style="margin:0">💾 Enregistrer</button>
+  </div>
 </div>
 
-<div class="card">
-  <h2>Séance (JSON)</h2>
+<details class="card">
+  <summary><h2>Séance (JSON)</h2></summary>
   <textarea id="json" readonly></textarea>
   <button class="copy" id="copy">Copier le JSON</button>
   <p class="note" id="msg" style="margin-top:8px">
     Étape suivante : envoi vers Garmin Connect.
   </p>
-</div>
+</details>
 
 <div class="card">
-  <h2>Enregistrer</h2>
+  <h2>6 - Enregistrer</h2>
   <div class="grid">
     <label>Nom de la séance<input id="wName" placeholder="10 × 400 m"></label>
     <div style="display:flex;align-items:flex-end"><button class="copy" id="wSave" style="margin:0;width:100%">Enregistrer</button></div>
@@ -420,9 +418,24 @@ function render(){
 
   const tot = s.reduce((a,x)=>a+d(x),0);
 
-  $("bars").innerHTML = s.map(x=>
-    `<i class="${x.type}" style="flex:${d(x)} 1 0;height:${H[x.type]}%"></i>`
-  ).join("");
+    $("bars").innerHTML = s.map(x=>{
+    const u = x.kind==="distance" ? x.value+" m" : mmss(x.value);
+    const pace = (x.type==="interval" && x.paceMinSecPerKm && x.paceMaxSecPerKm)
+      ? " @ "+mmss(x.paceMinSecPerKm)+"-"+mmss(x.paceMaxSecPerKm) : "";
+    const tip = NAMES[x.type]+" "+u+pace;
+    // Intensité des efforts : allure rapide = plus opaque
+    let style = "";
+    if(x.type==="interval" && x.paceMinSecPerKm && x.paceMaxSecPerKm){
+      const p = (x.paceMinSecPerKm + x.paceMaxSecPerKm)/2;
+      const op = Math.min(1, Math.max(.55, .55 + (300-p)/240));
+      style = `;opacity:${op.toFixed(2)}`;
+    }
+    return `<i class="${x.type}" data-tip="${tip}" style="flex:${d(x)} 1 0;height:${H[x.type]}%${style}"></i>`;
+  }).join("");
+
+  $("axis").innerHTML =
+    `<span>0:00</span><span>${mmss(tot/4)}</span><span>${mmss(tot/2)}</span>`+
+    `<span>${mmss(3*tot/4)}</span><span>${mmss(tot)}</span>`;
 
   let km = 0, known = true;
 
@@ -851,6 +864,8 @@ $("wSave").onclick = async()=>{
   curId = r.j.workout.id;
   $("wState").innerHTML = "Enregistrée : « "+esc(name)+" » · <a href=\"/bibliotheque\">Ma bibliothèque</a>";
 };
+
+  $("wSaveBtn").onclick = ()=>$("wSave").click();
 
 // Ouverture depuis la bibliothèque : /?open=ID
 (async()=>{
