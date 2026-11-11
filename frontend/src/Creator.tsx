@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import type { CSSProperties } from 'react';
 import { api, mmss, dur, parsePace } from './api';
 import { STEP_NAMES, TYPE_LABELS } from './types';
 import type { Block, Step, StepType, Workout } from './types';
@@ -209,7 +210,6 @@ export default function Creator() {
   const [msg, setMsg] = useState('Étape suivante : envoi vers Garmin Connect.');
   const [vma, setVma] = useState<number | null>(null);
 
-  // Étapes recalculées dès qu'un réglage change
   useEffect(() => {
     setSteps(buildSteps(type, unit, fields, blocks));
   }, [type, unit, fields, blocks]);
@@ -220,7 +220,6 @@ export default function Creator() {
     });
   }, []);
 
-  // Ouverture depuis la bibliothèque ou le planning : /?open=ID
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get('open');
     if (!id) return;
@@ -384,7 +383,6 @@ export default function Creator() {
               ⚡ Pré-remplir les allures (VMA {String(vma).replace('.', ',')} km/h)
             </button>
           )}
-          {FIELDS.filter(showField.bind(null, undefined as never) && ((k) => k !== 'paceMin' && k !== 'paceMax')(undefined as never)).length === 0 && null}
           {FIELDS.filter((k) => k === 'paceMin' || k === 'paceMax').map((k) => (
             <label key={k}>
               {FIELD_LABELS[k]}
@@ -490,7 +488,7 @@ export default function Creator() {
             const u = x.kind === 'distance' ? x.value + ' m' : mmss(x.value);
             const pace = x.type === 'interval' && x.paceMinSecPerKm && x.paceMaxSecPerKm
               ? ' @ ' + mmss(x.paceMinSecPerKm) + '-' + mmss(x.paceMaxSecPerKm) : '';
-            let style: React.CSSProperties = {
+            let style: CSSProperties = {
               flex: stepDuration(x) + ' 1 0',
               height: BAR_HEIGHT[x.type] + '%',
             };

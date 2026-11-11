@@ -1,118 +1,153 @@
 import { useEffect, useState } from 'react';
-import Login from './Login';
+import { api } from './api';
+import Creator from './Creator';
+import Library from './Library';
+import Planning from './Planning';
 
-type ApiStatus = 'loading' | 'online' | 'offline';
-type AuthState = 'loading' | 'anon' | 'authed';
+type Me = { id: number; email: string; name?: string | null; vma?: number | null };
 
-interface SessionInfo {
-  email: string;
-  isAdmin: boolean;
+const NAV = [
+  { hash: '#/', label: 'Créateur', icon: '⚡' },
+  { hash: '#/bibliotheque', label: 'Bibliothèque', icon: '📚' },
+  { hash: '#/planning', label: 'Planning', icon: '🗓️' },
+];
+
+function currentHash() {
+  return window.location.hash || '#/';
 }
 
 export default function App() {
-  const [apiStatus, setApiStatus] = useState<ApiStatus>('loading');
-  const [authState, setAuthState] = useState<AuthState>('loading');
-  const [session, setSession] = useState<SessionInfo | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [open, setOpen] = useState(() => localStorage.getItem('sb-open') !== '0');
+  const [hash, setHash] = useState(currentHash);
 
   useEffect(() => {
-    fetch('/api/health')
-      .then((response) => {
-        if (!response.ok) throw new Error('API indisponible');
-        return response.json();
-      })
-      .then(() => setApiStatus('online'))
-      .catch(() => setApiStatus('offline'));
-
-    fetch('/api/auth/me', { credentials: 'include' })
-      .then((response) =>
-        response.ok ? response.json() : Promise.reject(new Error('anon')),
-      )
-      .then((data) => {
-        setSession({ email: data.email, isAdmin: Boolean(data.isAdmin) });
-        setAuthState('authed');
-      })
-      .catch(() => setAuthState('anon'));
+    const onHash = () => setHash(currentHash());
+    window.addEventListener('hashchange', onHash);
+    return () => window.removeEventListener('hashchange', onHash);
   }, []);
 
-  async function logout() {
-    await fetch('/api/auth/logout', {
-      method: 'POST',
-      credentials: 'include',
-    }).catch(() => {});
-    setSession(null);
-    setAuthState('anon');
-  }
+  useEffect(() => {
+    api<{ user?: Me }>('/api/auth/me').then((r) => {
+      if (r.ok && r.j.user) setMe(r.j.user);
+      setLoading(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('sb-open', open ? '1' : '0');
+  }, [open]);
+
+  const logout = async () => {
+    await api('/api/auth/logout', 'POST');
+    setMe(null);
+  };
+
+  if (loading) return <div className="landing"><p>Chargement…</p></div>;
+  if (!me) return <Login onLogged={setMe} />;
+
+  const go = (h: string) => {
+    window.location.hash = h;
+    setHash(h);
+    if (window.innerWidth <= 860) setOpen(false);
+  };
 
   return (
-    <main className="page-shell">
-      <header className="topbar">
-        <a className="brand" href="/" aria-label="Accueil">
-          <span className="brand-mark">GF</span>
-          <span>
-            Générateur<span className="brand-light">Fractionné</span>
-          </span>
-        </a>
-        <span className="environment">NOUVELLE VERSION</span>
-      </header>
-
-      <section className="hero">
-        <p className="eyebrow">LA REFONTE PREND FORME</p>
-        <h1>
-          Vos entraînements,
-          <br />
-          <span>pensés autrement.</span>
-        </h1>
-        <p className="intro">
-          Le nouveau socle technique est en place. Nous allons reconstruire
-          progressivement le générateur, la bibliothèque et la planification.
-        </p>
-
-        <div className="status-card">
-          <span className={`status-dot ${apiStatus}`} />
-          <div>
-            <strong>
-              {apiStatus === 'loading' && 'Vérification de l’API…'}
-              {apiStatus === 'online' && 'API connectée'}
-              {apiStatus === 'offline' && 'API non joignable'}
-            </strong>
-            <p>
-              {apiStatus === 'online'
-                ? 'Le frontend React communique avec le backend NestJS.'
-                : apiStatus === 'offline'
-                  ? 'Vérifiez que le backend NestJS est démarré.'
-                  : 'Connexion au backend en cours.'}
-            </p>
-          </div>
+    <div className={'app-shell ' + (open ? 'sb-open' : 'sb-closed')}>
+      <button
+        className="sb-toggle"
+        type="button"
+        aria-label={open ? 'Replier le menu' : 'Déplier le menu'}
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
+        ☰
+      </button>
+      {open && <div className="sb-overlay" onClick={() => setOpen(false)} />}
+      <nav className="sb">
+        <div className="sb-lb">Fractionné</div>
+        {NAV.map((n) => (
+          <a
+            key={n.hash}
+            href={n.hash}
+            className={hash === n.hash ? 'active' : ''}
+            onClick={() => go(n.hash)}
+          >
+            <span aria-hidden="true">{n.icon}</span> {n.label}
+          </a>
+        ))}
+        <div className="sb-foot">
+          <span className="sb-mail">{me.email}</span>
+          <button type="button" onClick={logout}>Se déconnecter</button>
         </div>
+      </nav>
+      <main className="main">
+        {hash === '#/' && <Creator />}
+        {hash === '#/bibliotheque' && <Library />}
+        {hash === '#/planning' && <Planning />}
+      </main>
+    </div>
+  );
+}
 
-        {authState === 'anon' && (
-          <Login
-            onLoggedIn={(email, isAdmin) => {
-              setSession({ email, isAdmin });
-              setAuthState('authed');
-            }}
-          />
-        )}
+function Login({ onLogged }: { onLogged: (me: Me) => void }) {
+  const [tab, setTab] = useState<'login' | 'register'>('login');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [invite, setInvite] = useState('');
+  const [err, setErr] = useState('');
 
-        {authState === 'authed' && session && (
-          <div className="status-card">
-            <span className="status-dot online" />
-            <div>
-              <strong>Connecté : {session.email}</strong>
-              <p>
-                {session.isAdmin
-                  ? 'Compte administrateur.'
-                  : 'Session active pendant 30 jours.'}
-              </p>
-              <button className="auth-link" type="button" onClick={logout}>
-                Se déconnecter
-              </button>
-            </div>
-          </div>
-        )}
-      </section>
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErr('');
+    if (tab === 'register' && password.length < 12) {
+      setErr('Mot de passe : 12 caractères minimum.');
+      return;
+    }
+    const url = tab === 'login' ? '/api/auth/login' : '/api/auth/register';
+    const body = tab === 'login' ? { email, password } : { email, password, name, inviteCode: invite };
+    const r = await api<{ user?: Me; error?: string }>(url, 'POST', body);
+    if (!r.ok) { setErr(r.j.error || 'Erreur.'); return; }
+    if (r.j.user) onLogged(r.j.user);
+  };
 
-      <footer>Une base saine pour construire la suite.</footer>
-    </main>
+  return (
+    <div className="landing">
+      <div className="auth-card">
+        <h1>Générateur de fractionné</h1>
+        <div className="seg">
+          <button type="button" aria-pressed={tab === 'login'} onClick={() => setTab('login')}>Connexion</button>
+          <button type="button" aria-pressed={tab === 'register'} onClick={() => setTab('register')}>Inscription</button>
+        </div>
+        <form onSubmit={submit}>
+          <label>
+            Email
+            <input type="email" value={email} required onChange={(e) => setEmail(e.target.value)} />
+          </label>
+          {tab === 'register' && (
+            <label>
+              Nom (optionnel)
+              <input value={name} onChange={(e) => setName(e.target.value)} />
+            </label>
+          )}
+          <label>
+            Mot de passe
+            <input type="password" value={password} required minLength={12} onChange={(e) => setPassword(e.target.value)} />
+          </label>
+          {tab === 'register' && (
+            <label>
+              Code d’invitation
+              <input value={invite} required maxLength={64} onChange={(e) => setInvite(e.target.value)} />
+            </label>
+          )}
+          {err && <p className="err">{err}</p>}
+          <button type="submit" className="copy">
+            {tab === 'login' ? 'Se connecter' : 'Créer mon compte'}
+          </button>
+        </form>
+      </div>
+    </div>
   );
 }
