@@ -7,7 +7,7 @@
 </head><body><main>
 {% include "_nav.html" %}
 <h1>Connexion</h1>
-<div class="card">
+<div class="card" id="loginCard">
   <div class="grid">
     <label>E-mail<input id="mail" type="email" autocomplete="username"></label>
     <label>Mot de passe<input id="pw" type="password" autocomplete="current-password"></label>
@@ -17,6 +17,18 @@
   <div style="display:flex;gap:8px;margin-top:8px">
     <button class="copy" id="go" style="margin:0">Se connecter</button>
     <button class="mini" id="reg">Créer un compte</button>
+  </div>
+  <p class="note" style="margin:10px 0 0"><a href="#" id="forgotLink">Mot de passe oublié ?</a></p>
+</div>
+<div class="card hide" id="forgotCard">
+  <h2>Mot de passe oublié</h2>
+  <p class="note" style="margin-bottom:8px">Saisis ton e-mail : tu recevras un lien pour choisir un nouveau mot de passe (valable 1 heure).</p>
+  <label>E-mail<input id="fMail" type="email" autocomplete="username"></label>
+  <p class="err" id="fErr"></p>
+  <p class="note" id="fOk"></p>
+  <div style="display:flex;gap:8px;margin-top:8px">
+    <button class="copy" id="fGo" style="margin:0">Envoyer le lien</button>
+    <button class="mini" id="fBack">Retour</button>
   </div>
 </div>
 </main>
@@ -33,4 +45,21 @@ $("go").onclick = ()=>auth("login");
 $("reg").onclick = ()=>auth("register");
 $("pw").onkeydown = e=>{ if(e.key==="Enter") auth("login"); };
 api("/api/me").then(r=>{ if(r.ok) location.href = nx; });
+
+$("forgotLink").onclick = e=>{
+  e.preventDefault();
+  $("loginCard").classList.add("hide");
+  $("forgotCard").classList.remove("hide");
+  $("fMail").value = $("mail").value;
+};
+$("fBack").onclick = ()=>{
+  $("forgotCard").classList.add("hide");
+  $("loginCard").classList.remove("hide");
+};
+$("fGo").onclick = async()=>{
+  $("fErr").textContent = ""; $("fOk").textContent = "";
+  const r = await api("/api/forgot-password","POST",{email:$("fMail").value.trim()});
+  if(!r.ok){ $("fErr").textContent = r.j.error || "Erreur."; return; }
+  $("fOk").textContent = r.j.message;
+};
 </script></body></html>

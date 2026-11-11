@@ -119,3 +119,5 @@ li a{color:var(--ef);font-weight:600;text-decoration:none}
 .nav a[aria-current]{background:var(--ef);border-color:var(--ef);color:#fff}
 code{font:600 15px ui-monospace,Menlo,monospace}
 
+/* Boutons d'action d'une étape (créateur) */
+.step-actions { display: flex; gap: 4px; align-items: center; }

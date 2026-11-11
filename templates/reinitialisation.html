@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Réinitialisation · Fractionné</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+</head><body><main>
+{% include "_nav.html" %}
+<h1>Nouveau mot de passe</h1>
+<div class="card" id="formCard">
+  <div class="grid">
+    <label>Nouveau mot de passe (8 caractères min.)<input id="p1" type="password" autocomplete="new-password"></label>
+    <label>Confirmer le mot de passe<input id="p2" type="password" autocomplete="new-password"></label>
+  </div>
+  <p class="err" id="err"></p>
+  <button class="copy" id="go" style="margin:8px 0 0">Enregistrer le mot de passe</button>
+</div>
+<div class="card hide" id="okCard">
+  <p style="margin:0">✅ Mot de passe modifié. Tu peux te connecter.</p>
+  <p style="margin:8px 0 0"><a href="/connexion">Aller à la connexion</a></p>
+</div>
+<div class="card hide" id="badCard">
+  <p class="err" style="margin:0">Ce lien est invalide ou expiré.</p>
+  <p style="margin:8px 0 0"><a href="/connexion">Demander un nouveau lien</a></p>
+</div>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const token = new URLSearchParams(location.search).get("token") || "";
+if(!token){
+  $("formCard").classList.add("hide");
+  $("badCard").classList.remove("hide");
+}
+$("go").onclick = async()=>{
+  $("err").textContent = "";
+  if($("p1").value !== $("p2").value){
+    $("err").textContent = "Les deux mots de passe ne correspondent pas.";
+    return;
+  }
+  const r = await api("/api/reset-password","POST",{token:token,password:$("p1").value});
+  if(!r.ok){
+    $("err").textContent = r.j.error || "Erreur.";
+    if((r.j.error||"").match(/invalide|expiré/i)){
+      $("formCard").classList.add("hide");
+      $("badCard").classList.remove("hide");
+    }
+    return;
+  }
+  $("formCard").classList.add("hide");
+  $("okCard").classList.remove("hide");
+};
+</script></body></html>

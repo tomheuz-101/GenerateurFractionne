@@ -1,4 +1,4 @@
-
+import urllib.request
 import os
 import json
 import hmac
@@ -77,6 +77,13 @@ class GarminLink(db.Model):
     pending = db.Column(db.Text)
     pending_at = db.Column(db.Float)
 
+class PasswordReset(db.Model):
+    """Jeton de réinitialisation de mot de passe, à usage unique."""
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"),
+                        nullable=False, index=True)
+    token_hash = db.Column(db.String(64), unique=True, nullable=False)
+    created_at = db.Column(db.Float, nullable=False)
 
 with app.app_context():
     db.create_all()
@@ -267,6 +274,121 @@ def index():
 def page_login():
     return render_page("connexion.html", "login", auth=False)
 
+@app.get("/reinitialisation")
+def page_reset():
+    return render_page("reinitialisation.html", "reset", auth=False)
+
+
+# --------------------------------------------------
+# E-MAIL (RESEND)
+# --------------------------------------------------
+
+def send_email(to, subject, text):
+    api_key = os.environ.get("RESEND_API_KEY")
+    mail_from = os.environ.get("MAIL_FROM", "")
+    if not api_key or not mail_from:
+        app.logger.error("RESEND_API_KEY ou MAIL_FROM manquant : e-mail non envoyé")
+        raise RuntimeError("Envoi d'e-mail non configuré.")
+
+    body = json.dumps({
+        "from": mail_from,
+        "to": [to],
+        "subject": subject,
+        "text": text,
+    }).encode()
+
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=body,
+        headers={
+            "Authorization": "Bearer " + api_key,
+            "Content-Type": "application/json",
+        },
+        method="POST")
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        resp.read()
+
+
+# --------------------------------------------------
+# RECUPERATION DE MOT DE PASSE
+# --------------------------------------------------
+
+RESET_TTL = 3600  # 1 heure
+
+
+def _hash_token(token):
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def create_reset_token(user):
+    """Crée un jeton (renvoyé en clair une seule fois) et invalide les anciens."""
+    PasswordReset.query.filter_by(user_id=user.id).delete()
+    token = secrets.token_urlsafe(24)
+    db.session.add(PasswordReset(
+        user_id=user.id,
+        token_hash=_hash_token(token),
+        created_at=time.time()))
+    db.session.commit()
+    return token
+
+
+@app.post("/api/forgot-password")
+def forgot_password():
+    d = request.get_json(silent=True) or {}
+    email = (d.get("email") or "").strip().lower()
+    user = User.query.filter_by(email=email).first()
+
+    # Réponse identique que le compte existe ou non,
+    # pour ne pas révéler qui a un compte.
+    if user:
+        base_url = os.environ.get("APP_URL", request.host_url.rstrip("/"))
+        link = base_url + "/reinitialisation?token=" + create_reset_token(user)
+        try:
+            send_email(
+                user.email,
+                "Réinitialisation de ton mot de passe",
+                "Bonjour,\n\nPour choisir un nouveau mot de passe, ouvre ce "
+                "lien (valable 1 heure) :\n\n" + link +
+                "\n\nSi tu n'es pas à l'origine de cette demande, "
+                "ignore ce message.")
+        except Exception:
+            app.logger.exception("Envoi de l'e-mail de réinitialisation impossible")
+            return jsonify(success=False,
+                           error="Envoi de l'e-mail impossible, réessaie plus "
+                                 "tard."), 502
+
+    return jsonify(success=True,
+                   message="Si un compte existe avec cet e-mail, un lien de "
+                           "réinitialisation vient d'être envoyé.")
+
+
+@app.post("/api/reset-password")
+def reset_password():
+    d = request.get_json(silent=True) or {}
+    token = (d.get("token") or "").strip()
+    new = d.get("password") or ""
+    if len(new) < 8:
+        return jsonify(success=False,
+                       error="Mot de passe trop court (8 caractères "
+                             "minimum)."), 400
+
+    reset = (PasswordReset.query.filter_by(token_hash=_hash_token(token)).first()
+             if token else None)
+    if not reset or time.time() - reset.created_at > RESET_TTL:
+        return jsonify(success=False,
+                       error="Lien invalide ou expiré, demande-en un "
+                             "nouveau."), 400
+
+    user = db.session.get(User, reset.user_id)
+    if not user:
+        return jsonify(success=False, error="Compte introuvable."), 404
+
+    user.pw = generate_password_hash(new)
+    db.session.delete(reset)
+    PasswordReset.query.filter_by(user_id=user.id).delete()
+    db.session.commit()
+    return jsonify(success=True,
+                   message="Mot de passe modifié, tu peux te connecter.")
 
 @app.get("/bibliotheque")
 def page_library():
@@ -432,6 +554,7 @@ def owner_required(f):
 def purge_user(user):
     Workout.query.filter_by(user_id=user.id).delete()
     GarminLink.query.filter_by(user_id=user.id).delete()
+    PasswordReset.query.filter_by(user_id=user.id).delete()   # ← nouvelle ligne
     db.session.delete(user)
     db.session.commit()
 
