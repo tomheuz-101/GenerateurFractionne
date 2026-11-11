@@ -5,6 +5,24 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
+export interface PlanDayJson {
+  id: number;
+  week: number;
+  weekday: number;
+  workoutId: number | null;
+  workoutName: string | null;
+  label: string | null;
+  done: boolean;
+}
+
+export interface PlanJson {
+  id: number;
+  name: string;
+  weeks: number;
+  start: string;
+  days: PlanDayJson[];
+}
+
 @Injectable()
 export class PlansService {
   constructor(private readonly prisma: PrismaService) {}
@@ -26,7 +44,7 @@ export class PlansService {
     name: string;
     weeks: number;
     startDate: Date;
-  }) {
+  }): Promise<PlanJson> {
     const days = await this.prisma.planDay.findMany({
       where: { planId: plan.id },
       orderBy: [{ week: 'asc' }, { weekday: 'asc' }],
@@ -69,7 +87,7 @@ export class PlansService {
       where: { userId },
       orderBy: { createdAt: 'desc' },
     });
-    const plans = [];
+    const plans: PlanJson[] = [];
     for (const plan of rows) {
       plans.push(await this.planJson(plan));
     }
