@@ -121,3 +121,34 @@ code{font:600 15px ui-monospace,Menlo,monospace}
 
 /* Boutons d'action d'une étape (créateur) */
 .step-actions { display: flex; gap: 4px; align-items: center; }
+
+/* ---------- Barre d'actions sticky ---------- */
+.actionbar{
+  position:fixed;left:0;right:0;bottom:0;z-index:10;
+  padding:10px 14px calc(10px + env(safe-area-inset-bottom,0px));
+  background:var(--card);border-top:1px solid var(--bd);
+  box-shadow:0 -4px 12px rgba(0,0,0,.10)
+}
+.actionbar .in{max-width:720px;margin:0 auto;display:flex;gap:8px}
+.actionbar button{flex:1;margin:0;padding:12px 8px}
+main{padding-bottom:84px}
+
+/* ---------- Graphe : tooltip et axe ---------- */
+#bars i{position:relative}
+#bars i[data-tip]:hover::after{
+  content:attr(data-tip);position:absolute;bottom:calc(100% + 6px);
+  left:50%;transform:translateX(-50%);
+  background:var(--tx);color:var(--bg);
+  font:600 11px Barlow,sans-serif;padding:3px 7px;border-radius:6px;
+  white-space:nowrap;z-index:5;pointer-events:none
+}
+#axis{display:flex;justify-content:space-between;margin-top:4px;
+  font:600 11px Barlow,sans-serif;color:var(--mu)}
+
+/* ---------- JSON replié ---------- */
+details.card summary{cursor:pointer;list-style:none}
+details.card summary::-webkit-details-marker{display:none}
+details.card summary h2{display:inline}
+details.card summary::after{content:"▾";float:right;color:var(--mu);font-size:14px}
+details.card[open] summary::after{content:"▴"}
+details.card[open] summary{margin-bottom:8px}
