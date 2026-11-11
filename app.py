@@ -1,3 +1,5 @@
+
+import urllib.error
 import smtplib
 import ssl
 from email.message import EmailMessage
@@ -363,10 +365,19 @@ def send_email(to, subject, text):
         method="POST"
     )
 
+    try:
     with urllib.request.urlopen(req, timeout=15) as resp:
         response = resp.read().decode("utf-8")
         app.logger.info("E-mail envoyé via Brevo API : %s", response)
 
+except urllib.error.HTTPError as e:
+    detail = e.read().decode("utf-8", errors="replace")
+    app.logger.error(
+        "Erreur Brevo API - HTTP %s : %s",
+        e.code,
+        detail
+    )
+    raise
 
 # --------------------------------------------------
 # RECUPERATION DE MOT DE PASSE
