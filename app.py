@@ -61,6 +61,7 @@ class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String(200), unique=True, nullable=False)
     pw = db.Column(db.String(300), nullable=False)
+    vma = db.Column(db.Float)          # ← nouvelle ligne
 
 
 class Workout(db.Model):
@@ -101,6 +102,13 @@ class PasswordReset(db.Model):
 
 with app.app_context():
     db.create_all()
+    # Migration douce : ajoute la colonne vma si la base existait déjà
+    from sqlalchemy import inspect, text
+    insp = inspect(db.engine)
+    if ("user" in insp.get_table_names()
+            and "vma" not in [c["name"] for c in insp.get_columns("user")]):
+        db.session.execute(text('ALTER TABLE "user" ADD COLUMN vma FLOAT'))
+        db.session.commit()
 
 
 def login_required(f):
@@ -214,7 +222,7 @@ def me():
     user = current_user()
     if not user:
         return jsonify(success=False), 401
-    return jsonify(success=True, email=user.email)
+    return jsonify(success=True, email=user.email, vma=user.vma)
 
 
 # --------------------------------------------------
@@ -671,6 +679,20 @@ def change_password():
     session["fp"] = _fp(user)
     return jsonify(success=True)
 
+@app.post("/api/profile/vma")
+@login_required
+def set_vma():
+    v = (request.get_json(silent=True) or {}).get("vma")
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return jsonify(success=False, error="VMA invalide."), 400
+    if not (8 <= v <= 30):
+        return jsonify(success=False, error="VMA hors limites (8 à 30 km/h)."), 400
+    user = current_user()
+    user.vma = v
+    db.session.commit()
+    return jsonify(success=True, vma=v)
 
 @app.post("/api/profile/delete")
 @login_required
