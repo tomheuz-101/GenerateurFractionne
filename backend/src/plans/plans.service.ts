@@ -9,10 +9,6 @@ import { PrismaService } from '../prisma/prisma.service';
 export class PlansService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private hashToken() {
-    throw new Error('unused');
-  }
-
   // ---------------- Helpers ----------------
 
   private async ownPlan(userId: number, planId: number) {
@@ -153,10 +149,14 @@ export class PlansService {
         if (!workout) {
           throw new NotFoundException('Séance introuvable.');
         }
-        // Snapshot figé au moment de l'assignation (port de la refonte)
+        // Snapshot figé au moment de l'assignation
         await this.prisma.planDay.update({
           where: { id: day.id },
-          data: { workoutId: workout.id, label: null, workoutSnapshot: workout.data as object },
+          data: {
+            workoutId: workout.id,
+            label: null,
+            workoutSnapshot: workout.data as object,
+          },
         });
       }
     }
