@@ -191,6 +191,7 @@ details.card[open] summary{margin-bottom:8px}
 
 /* Mobile : drawer coulissant */
 @media(max-width:760px){
+  main{padding-top:58px}          /* ← nouvelle ligne : espace sous le bouton ☰ */
   .sb{width:230px;transform:translateX(-100%);box-shadow:4px 0 16px rgba(0,0,0,.25)}
   body.sb-open .sb{transform:none}
   body.sb-open .sb-overlay{display:block}
