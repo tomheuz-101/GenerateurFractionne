@@ -155,43 +155,43 @@ details.card[open] summary{margin-bottom:8px}
 
 /* ---------- Menu latéral ---------- */
 .sb{
-  position\:fixed;top:0;left:0;bottom:0;width:210px;z-index:30;
-  background\:var(--card);border-right:1px solid var(--bd);
-  padding:56px 10px 14px;display\:flex;flex-direction\:column;gap:4px;
-  transition\:transform .2s ease,width .2s ease
+  position:fixed;top:0;left:0;bottom:0;width:210px;z-index:30;
+  background:var(--card);border-right:1px solid var(--bd);
+  padding:56px 10px 14px;display:flex;flex-direction:column;gap:4px;
+  transition:transform .2s ease,width .2s ease
 }
 .sb a{
-  display\:flex;align-items\:center;gap:10px;padding:10px 12px;
-  border-radius:8px;color\:var(--tx);text-decoration\:none;
-  font-weight:600;font-size:15px;white-space\:nowrap
+  display:flex;align-items:center;gap:10px;padding:10px 12px;
+  border-radius:8px;color:var(--tx);text-decoration:none;
+  font-weight:600;font-size:15px;white-space:nowrap
 }
-.sb a\:hover{background:var(--bg)}
+.sb a:hover{background:var(--bg)}
 .sb a[aria-current]{background:var(--ef);color:#fff}
 .sb-brand{
   font:700 20px "Barlow Condensed",sans-serif;
-  padding:0 12px 10px;display\:flex;gap:8px;align-items\:center
+  padding:0 12px 10px;display:flex;gap:8px;align-items:center
 }
 .sb-toggle{
-  position\:fixed;top:12px;left:12px;z-index:40;
+  position:fixed;top:12px;left:12px;z-index:40;
   width:36px;height:36px;border:1px solid var(--bd);
-  background\:var(--card);color\:var(--tx);border-radius:8px;
-  font-size:16px;cursor\:pointer
+  background:var(--card);color:var(--tx);border-radius:8px;
+  font-size:16px;cursor:pointer
 }
-.sb-toggle\:focus-visible{outline:2px solid var(--ef);outline-offset:2px}
-.sb-overlay{position\:fixed;inset:0;background\:rgba(0,0,0,.4);z-index:25;display\:none}
-body.sb-open .sb-overlay{display\:block}
+.sb-toggle:focus-visible{outline:2px solid var(--ef);outline-offset:2px}
+.sb-overlay{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:25;display:none}
+body.sb-open .sb-overlay{display:block}
 
 /* Desktop : le contenu se décale selon l'état du menu */
 @media(min-width:761px){
-  body{padding-left:226px;transition\:padding-left .2s ease}
+  body{padding-left:226px;transition:padding-left .2s ease}
   body.sb-closed{padding-left:66px}
   body.sb-closed .sb{width:54px;padding-left:8px;padding-right:8px}
-  body.sb-closed .sb-lb{display\:none}
+  body.sb-closed .sb-lb{display:none}
   body.sb-closed .sb-brand{padding:0 4px 10px}
 }
 
 /* Mobile : drawer coulissant */
 @media(max-width:760px){
-  .sb{width:230px;transform\:translateX(-100%);box-shadow:4px 0 16px rgba(0,0,0,.25)}
-  body.sb-open .sb{transform\:none}
+  .sb{width:230px;transform:translateX(-100%);box-shadow:4px 0 16px rgba(0,0,0,.25)}
+  body.sb-open .sb{transform:none}
 }
