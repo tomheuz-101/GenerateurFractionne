@@ -1,0 +1,159 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// --------------------------------------------------
+// UTILISATEURS
+// --------------------------------------------------
+
+model User {
+  id        Int      @id @default(autoincrement())
+  email     String   @unique @db.VarChar(200)
+  password  String   @map("pw") @db.VarChar(300)
+  vma       Float?
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  workouts       Workout[]
+  plans          Plan[]
+  garminLink     GarminLink?
+  passwordResets PasswordReset[]
+
+  invitesCreated Invite[]  @relation("InviteCreator")
+  invitesUsed    Invite[]  @relation("InviteUser")
+  sessions       Session[]
+
+  @@map("user")
+}
+
+// --------------------------------------------------
+// SEANCES
+// --------------------------------------------------
+
+model Workout {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  name      String   @db.VarChar(120)
+  data      Json     @db.JsonB
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated")
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  planDays PlanDay[]
+
+  @@index([userId, updatedAt])
+  @@map("workout")
+}
+
+// --------------------------------------------------
+// PLANS D'ENTRAINEMENT
+// --------------------------------------------------
+
+model Plan {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  name      String   @db.VarChar(120)
+  weeks     Int      @default(4)
+  startDate DateTime @map("start") @db.Date
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  user User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  days PlanDay[]
+
+  @@index([userId])
+  @@map("plan")
+}
+
+model PlanDay {
+  id              Int       @id @default(autoincrement())
+  planId          Int       @map("plan_id")
+  week            Int
+  weekday         Int
+  workoutId       Int?      @map("workout_id")
+  workoutSnapshot Json?     @map("workout_snapshot") @db.JsonB
+  label           String?   @db.VarChar(120)
+  done            Boolean   @default(false)
+  doneAt          DateTime? @map("done_at")
+
+  plan    Plan     @relation(fields: [planId], references: [id], onDelete: Cascade)
+  workout Workout? @relation(fields: [workoutId], references: [id], onDelete: SetNull)
+
+  @@unique([planId, week, weekday])
+  @@index([workoutId])
+  @@map("plan_day")
+}
+
+// --------------------------------------------------
+// INVITATIONS
+// --------------------------------------------------
+
+model Invite {
+  id          Int       @id @default(autoincrement())
+  codeHash    String    @unique @map("code_hash") @db.VarChar(64)
+  email       String?   @db.VarChar(200)
+  createdById Int?      @map("created_by_id")
+  usedById    Int?      @map("used_by_id")
+  createdAt   DateTime  @default(now()) @map("created_at")
+  expiresAt   DateTime? @map("expires_at")
+  usedAt      DateTime? @map("used_at")
+
+  createdBy User? @relation("InviteCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  usedBy    User? @relation("InviteUser", fields: [usedById], references: [id], onDelete: SetNull)
+
+  @@index([email])
+  @@map("invite")
+}
+
+// --------------------------------------------------
+// REINITIALISATION MOT DE PASSE
+// --------------------------------------------------
+
+model PasswordReset {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  tokenHash String   @unique @map("token_hash") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at")
+  expiresAt DateTime @map("expires_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("password_reset")
+}
+
+// --------------------------------------------------
+// CONNEXION GARMIN
+// --------------------------------------------------
+
+model GarminLink {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @unique @map("user_id")
+  tokens    String?   @db.Text
+  pending   String?   @db.Text
+  pendingAt DateTime? @map("pending_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("garmin_link")
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique @map("token_hash") @db.VarChar(64)
+  userId    Int      @map("user_id")
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+  @@map("session")
+}

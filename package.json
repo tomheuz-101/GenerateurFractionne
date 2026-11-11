@@ -1,7 +1,10 @@
 {
   "name": "generateur-fractionne",
   "private": true,
-  "workspaces": ["frontend", "backend"],
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
   "scripts": {
     "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
     "dev:frontend": "npm run dev --workspace frontend",
@@ -10,5 +13,12 @@
   },
   "devDependencies": {
     "concurrently": "^9.1.2"
+  },
+  "allowScripts": {
+    "prisma@7.10.1": true,
+    "@prisma/engines@7.10.1": true,
+    "esbuild@0.25.12": true,
+    "argon2@0.45.2": true,
+    "cookie-parser@1.4.7": true
   }
 }
