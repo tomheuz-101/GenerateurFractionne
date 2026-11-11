@@ -1,11 +1,17 @@
 import { useEffect, useState } from 'react';
-import type { FormEvent } from 'react';
 import { api } from './api';
 import Creator from './Creator';
 import Library from './Library';
+import Login from './Login';
 import Planning from './Planning';
 
-type Me = { id: number; email: string; name?: string | null; vma?: number | null };
+type ApiStatus = 'loading' | 'online' | 'offline';
+type AuthState = 'loading' | 'anon' | 'authed';
+
+interface SessionInfo {
+  email: string;
+  isAdmin: boolean;
+}
 
 const NAV = [
   { hash: '#/', label: 'Créateur', icon: '⚡' },
@@ -18,8 +24,9 @@ function currentHash() {
 }
 
 export default function App() {
-  const [me, setMe] = useState<Me | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [apiStatus, setApiStatus] = useState<ApiStatus>('loading');
+  const [authState, setAuthState] = useState<AuthState>('loading');
+  const [session, setSession] = useState<SessionInfo | null>(null);
   const [open, setOpen] = useState(() => localStorage.getItem('sb-open') !== '0');
   const [hash, setHash] = useState(currentHash);
 
@@ -30,23 +37,114 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    api<{ user?: Me }>('/api/auth/me').then((r) => {
-      if (r.ok && r.j.user) setMe(r.j.user);
-      setLoading(false);
-    });
+    fetch('/api/health')
+      .then((response) => {
+        if (!response.ok) throw new Error('API indisponible');
+        return response.json();
+      })
+      .then(() => setApiStatus('online'))
+      .catch(() => setApiStatus('offline'));
+
+    fetch('/api/auth/me', { credentials: 'include' })
+      .then((response) =>
+        response.ok ? response.json() : Promise.reject(new Error('anon')),
+      )
+      .then((data) => {
+        setSession({ email: data.email, isAdmin: Boolean(data.isAdmin) });
+        setAuthState('authed');
+      })
+      .catch(() => setAuthState('anon'));
   }, []);
 
   useEffect(() => {
     localStorage.setItem('sb-open', open ? '1' : '0');
   }, [open]);
 
-  const logout = async () => {
-    await api('/api/auth/logout', 'POST');
-    setMe(null);
-  };
+  async function logout() {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => {});
+    setSession(null);
+    setAuthState('anon');
+    window.location.hash = '';
+  }
 
-  if (loading) return <div className="landing"><p>Chargement…</p></div>;
-  if (!me) return <Login onLogged={setMe} />;
+  if (authState === 'loading') {
+    return (
+      <main className="page-shell">
+        <header className="topbar">
+          <a className="brand" href="/" aria-label="Accueil">
+            <span className="brand-mark">GF</span>
+            <span>
+              Générateur<span className="brand-light">Fractionné</span>
+            </span>
+          </a>
+          <span className="environment">NOUVELLE VERSION</span>
+        </header>
+        <section className="hero">
+          <p className="eyebrow">LA REFONTE PREND FORME</p>
+          <h1>Chargement…</h1>
+        </section>
+      </main>
+    );
+  }
+
+  if (authState === 'anon' || !session) {
+    return (
+      <main className="page-shell">
+        <header className="topbar">
+          <a className="brand" href="/" aria-label="Accueil">
+            <span className="brand-mark">GF</span>
+            <span>
+              Générateur<span className="brand-light">Fractionné</span>
+            </span>
+          </a>
+          <span className="environment">NOUVELLE VERSION</span>
+        </header>
+
+        <section className="hero">
+          <p className="eyebrow">LA REFONTE PREND FORME</p>
+          <h1>
+            Vos entraînements,
+            <br />
+            <span>pensés autrement.</span>
+          </h1>
+          <p className="intro">
+            Le nouveau socle technique est en place. Nous allons reconstruire
+            progressivement le générateur, la bibliothèque et la planification.
+          </p>
+
+          <div className="status-card">
+            <span className={`status-dot ${apiStatus}`} />
+            <div>
+              <strong>
+                {apiStatus === 'loading' && 'Vérification de l’API…'}
+                {apiStatus === 'online' && 'API connectée'}
+                {apiStatus === 'offline' && 'API non joignable'}
+              </strong>
+              <p>
+                {apiStatus === 'online'
+                  ? 'Le frontend React communique avec le backend NestJS.'
+                  : apiStatus === 'offline'
+                    ? 'Vérifiez que le backend NestJS est démarré.'
+                    : 'Connexion au backend en cours.'}
+              </p>
+            </div>
+          </div>
+
+          <Login
+            onLoggedIn={(email, isAdmin) => {
+              setSession({ email, isAdmin });
+              setAuthState('authed');
+            }}
+          />
+        </section>
+
+        <footer>Une base saine pour construire la suite.</footer>
+      </main>
+    );
+  }
 
   const go = (h: string) => {
     window.location.hash = h;
@@ -79,7 +177,7 @@ export default function App() {
           </a>
         ))}
         <div className="sb-foot">
-          <span className="sb-mail">{me.email}</span>
+          <span className="sb-mail">{session.email}</span>
           <button type="button" onClick={logout}>Se déconnecter</button>
         </div>
       </nav>
@@ -88,67 +186,6 @@ export default function App() {
         {hash === '#/bibliotheque' && <Library />}
         {hash === '#/planning' && <Planning />}
       </main>
-    </div>
-  );
-}
-
-function Login({ onLogged }: { onLogged: (me: Me) => void }) {
-  const [tab, setTab] = useState<'login' | 'register'>('login');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
-  const [invite, setInvite] = useState('');
-  const [err, setErr] = useState('');
-
-  const submit = async (e: FormEvent) => {
-    e.preventDefault();
-    setErr('');
-    if (tab === 'register' && password.length < 12) {
-      setErr('Mot de passe : 12 caractères minimum.');
-      return;
-    }
-    const url = tab === 'login' ? '/api/auth/login' : '/api/auth/register';
-    const body = tab === 'login' ? { email, password } : { email, password, name, inviteCode: invite };
-    const r = await api<{ user?: Me; error?: string }>(url, 'POST', body);
-    if (!r.ok) { setErr(r.j.error || 'Erreur.'); return; }
-    if (r.j.user) onLogged(r.j.user);
-  };
-
-  return (
-    <div className="landing">
-      <div className="auth-card">
-        <h1>Générateur de fractionné</h1>
-        <div className="seg">
-          <button type="button" aria-pressed={tab === 'login'} onClick={() => setTab('login')}>Connexion</button>
-          <button type="button" aria-pressed={tab === 'register'} onClick={() => setTab('register')}>Inscription</button>
-        </div>
-        <form onSubmit={submit}>
-          <label>
-            Email
-            <input type="email" value={email} required onChange={(e) => setEmail(e.target.value)} />
-          </label>
-          {tab === 'register' && (
-            <label>
-              Nom (optionnel)
-              <input value={name} onChange={(e) => setName(e.target.value)} />
-            </label>
-          )}
-          <label>
-            Mot de passe
-            <input type="password" value={password} required minLength={12} onChange={(e) => setPassword(e.target.value)} />
-          </label>
-          {tab === 'register' && (
-            <label>
-              Code d’invitation
-              <input value={invite} required maxLength={64} onChange={(e) => setInvite(e.target.value)} />
-            </label>
-          )}
-          {err && <p className="err">{err}</p>}
-          <button type="submit" className="copy">
-            {tab === 'login' ? 'Se connecter' : 'Créer mon compte'}
-          </button>
-        </form>
-      </div>
     </div>
   );
 }
