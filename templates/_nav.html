@@ -8,6 +8,7 @@
 
   {% if me %}
   <a href="/bibliotheque"{% if page == "library" %} aria-current="page"{% endif %}>📚<span class="sb-lb">Bibliothèque</span></a>
+  <a href="/planning"{% if page == "planning" %} aria-current="page"{% endif %}>📅<span class="sb-lb">Planning</span></a>
   <a href="/profil"{% if page == "profile" %} aria-current="page"{% endif %}>👤<span class="sb-lb">Profil</span></a>
   {% if owner %}<a href="/admin"{% if page == "admin" %} aria-current="page"{% endif %}>⚙️<span class="sb-lb">Administration</span></a>{% endif %}
   <a href="#" id="navOut">🚪<span class="sb-lb">Déconnexion</span></a>
