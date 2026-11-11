@@ -42,7 +42,7 @@
     <div></div>
 
     <div class="pace-title">Plage d'allure cible des efforts (min/km)</div>
-
+    <button class="mini hide" id="vmaFill" style="grid-column:1/-1;justify-self:start"></button>
     <label>Allure minimale
       <input id="paceMin" placeholder="4:10" inputmode="numeric">
     </label>
@@ -740,6 +740,29 @@ $("copy").onclick = async()=>{
   }
 };
 
+  // ------------------------------------------
+// PRE-REMPLISSAGE DES ALLURES DEPUIS LA VMA
+// ------------------------------------------
+
+let VMA = null;
+
+api("/api/me").then(r=>{
+  if(r.ok && r.j.vma){ VMA = r.j.vma; vmaUI(); }
+});
+
+function vmaUI(){
+  const b = $("vmaFill");
+  b.textContent = "⚡ Pré-remplir les allures (VMA " + String(VMA).replace(".", ",") + " km/h)";
+  b.classList.remove("hide");
+}
+
+$("vmaFill").onclick = ()=>{
+  if(!VMA) return;
+  // Efforts à ~90-100 % VMA : 3600/VMA = allure à 100 % (s/km)
+  if(!$("paceMin").value) $("paceMin").value = mmss(3600/VMA);
+  if(!$("paceMax").value) $("paceMax").value = mmss(3600/(0.9*VMA));
+  regen();
+};
 
 // ------------------------------------------
 // INITIALISATION
