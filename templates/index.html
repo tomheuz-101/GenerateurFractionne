@@ -7,128 +7,12 @@
 <title>Générateur de fractionné</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
 
-<style>
-:root{
---bg:#eef1f0;--card:#fff;--tx:#14212b;--mu:#5d6b75;
---bd:#d5dcdb;--ef:#2447d8;--re:#9fb0bd;--wu:#7d8f9c;
-color-scheme:light;box-sizing:border-box;
-padding-top:env(safe-area-inset-top,0px);
-padding-bottom:env(safe-area-inset-bottom,0px)
-}
-@media (prefers-color-scheme:dark){
-:root:not([data-theme="light"]){
---bg:#10181e;--card:#18232b;--tx:#e9eef1;--mu:#93a2ad;
---bd:#2b3a45;--ef:#6f8cff;--re:#4a5d6b;--wu:#5f7482;
-color-scheme:dark
-}}
-:root[data-theme="dark"]{
---bg:#10181e;--card:#18232b;--tx:#e9eef1;--mu:#93a2ad;
---bd:#2b3a45;--ef:#6f8cff;--re:#4a5d6b;--wu:#5f7482;
-color-scheme:dark
-}
-*{box-sizing:border-box}
-html,body{margin:0}
-body{
-background:var(--bg);color:var(--tx);
-font:16px/1.45 Barlow,system-ui,sans-serif;
-padding:18px 16px 40px
-}
-main{max-width:720px;margin:0 auto}
-h1{
-font:700 34px/1.05 "Barlow Condensed",Impact,sans-serif;
-margin:4px 0 16px;letter-spacing:.01em
-}
-.card{
-background:var(--card);border:1px solid var(--bd);
-border-radius:10px;padding:14px;margin-bottom:14px
-}
-.seg{
-display:grid;grid-template-columns:repeat(auto-fit,minmax(88px,1fr));
-gap:6px;margin-bottom:12px
-}
-.seg button{
-font:600 15px Barlow,sans-serif;padding:10px 4px;
-border:1px solid var(--bd);background:transparent;
-color:var(--tx);border-radius:8px;cursor:pointer
-}
-.seg button[aria-pressed="true"]{
-background:var(--ef);border-color:var(--ef);color:#fff
-}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-label{display:block;font-size:13px;color:var(--mu)}
-input,select{
-width:100%;margin-top:3px;font:500 16px Barlow,sans-serif;
-padding:9px 10px;border:1px solid var(--bd);
-border-radius:8px;background:var(--bg);color:var(--tx)
-}
-button:focus-visible,input:focus-visible,select:focus-visible{
-outline:2px solid var(--ef);outline-offset:2px
-}
-.hide{display:none}
-.pace-title{
-grid-column:1/-1;font-weight:600;color:var(--tx);
-margin-top:5px;font-size:14px
-}
-#bars{
-display:flex;align-items:flex-end;gap:2px;height:130px;
-border-bottom:2px solid var(--tx);padding-bottom:0
-}
-#bars i{
-display:block;min-width:2px;border-radius:2px 2px 0 0;
-background:var(--re)
-}
-#bars i.interval{background:var(--ef)}
-#bars i.warmup,#bars i.cooldown{background:var(--wu)}
-#sum{font:600 20px "Barlow Condensed",sans-serif;margin:10px 0 2px}
-.note{font-size:13px;color:var(--mu);margin:0}
-ol{margin:0;padding-left:22px}
-li{
-padding:7px 0;border-bottom:1px solid var(--bd);
-display:flex;align-items:center;gap:7px;flex-wrap:wrap
-}
-li .nm{flex:1 1 110px}
-li.interval .nm{color:var(--ef);font-weight:600}
-li input{width:75px;margin:0;padding:6px 7px}
-li input.pc{width:70px}
-li small{color:var(--mu)}
-li .del{
-margin-left:auto;border:0;background:transparent;
-color:var(--mu);font-size:22px;line-height:1;
-cursor:pointer;padding:0 6px
-}
-textarea{
-width:100%;height:150px;font:13px/1.4 ui-monospace,Menlo,monospace;
-background:var(--bg);color:var(--tx);
-border:1px solid var(--bd);border-radius:8px;padding:8px
-}
-.copy{
-margin-top:8px;font:600 15px Barlow,sans-serif;
-padding:10px 16px;border:0;border-radius:8px;
-background:var(--ef);color:#fff;cursor:pointer
-}
-h2{font:700 20px "Barlow Condensed",sans-serif;margin:0 0 8px}
-.pace-fields{
-display:flex;align-items:center;gap:4px;flex-wrap:wrap
-}
-.pace-fields input{width:68px}
-@media(max-width:420px){
-body{padding-left:10px;padding-right:10px}
-.seg button{font-size:13px}
-li input{width:65px}
-li input.pc{width:64px}
-}
-.mini{border:1px solid var(--bd);background:transparent;color:var(--tx);border-radius:6px;padding:5px 9px;font:500 13px Barlow,sans-serif;cursor:pointer}
-li a{color:var(--ef);font-weight:600;text-decoration:none}
-.err{color:#d33;font-size:13px;margin:6px 0 0}
-.bh{display:none!important}
-.bk{border:1px solid var(--bd);border-radius:8px;padding:10px;margin-bottom:10px}
-.bkh{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:8px}
-.bkh span{display:flex;gap:4px;flex-wrap:wrap}
-</style>
+<link rel="stylesheet" href="/static/style.css">
 </head>
 
 <body>
 <main>
+{% include "_nav.html" %}
 
 <h1>Générateur de fractionné</h1>
 
@@ -254,47 +138,18 @@ li a{color:var(--ef);font-weight:600;text-decoration:none}
   </p>
 </div>
 
-<div class="card" id="lib">
-  <h2>Bibliothèque</h2>
-  <div id="auth">
-    <div class="grid">
-      <label>E-mail<input id="aMail" type="email" autocomplete="username"></label>
-      <label>Mot de passe<input id="aPw" type="password" autocomplete="current-password"></label>
-      <label>Code d’invitation (inscription)<input id="aInv" autocomplete="off"></label>
-    </div>
-    <p class="err" id="aErr"></p>
-    <div style="display:flex;gap:8px;margin-top:8px">
-      <button class="copy" id="aLogin" style="margin:0">Se connecter</button>
-      <button class="mini" id="aReg">Créer un compte</button>
-    </div>
+<div class="card">
+  <h2>Enregistrer</h2>
+  <div class="grid">
+    <label>Nom de la séance<input id="wName" placeholder="10 × 400 m"></label>
+    <div style="display:flex;align-items:flex-end"><button class="copy" id="wSave" style="margin:0;width:100%">Enregistrer</button></div>
   </div>
-  <div id="libBox" class="hide">
-    <p class="note" style="margin-bottom:8px"><span id="who"></span> · <a href="#" id="aOut">Se déconnecter</a></p>
-    <div style="margin:10px 0;padding:10px;border:1px solid var(--bd);border-radius:8px">
-      <p class="note" id="gState" style="margin-bottom:6px"></p>
-      <div id="gForm">
-        <div class="grid">
-          <label>E-mail Garmin<input id="gMail" type="email" autocomplete="off"></label>
-          <label>Mot de passe Garmin<input id="gPw" type="password" autocomplete="off"></label>
-        </div>
-        <div id="gMfa" class="hide" style="margin-top:8px"><label>Code de vérification Garmin<input id="gCode" inputmode="numeric" autocomplete="one-time-code"></label></div>
-        <p class="err" id="gErr"></p>
-        <button class="copy" id="gGo" style="margin:8px 0 6px">Connecter mon compte Garmin</button>
-        <p class="note">Ton mot de passe sert une seule fois : il n’est jamais enregistré, seuls des jetons chiffrés le sont.</p>
-      </div>
-      <button class="mini hide" id="gOff">Déconnecter Garmin</button>
-    </div>
-    <div class="grid">
-      <label>Nom de la séance<input id="wName" placeholder="10 × 400 m"></label>
-      <div style="display:flex;align-items:flex-end"><button class="copy" id="wSave" style="margin:0;width:100%">Enregistrer</button></div>
-    </div>
-    <p class="note" id="wState" style="margin:6px 0 8px">Nouvelle séance.</p>
-    <ol id="wList" style="padding-left:0;list-style:none"></ol>
-  </div>
+  <p class="note" id="wState" style="margin-top:6px">Nouvelle séance · <a href="/bibliotheque">Ma bibliothèque</a></p>
 </div>
 
 </main>
 
+<script src="/static/common.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 
@@ -811,12 +666,11 @@ regen();
 
 
 // ------------------------------------------
-// MODELES ET BIBLIOTHEQUE
+// MODELES ET ENREGISTREMENT
 // ------------------------------------------
 
 const FIELDS = ["paceMin","paceMax","reps","val","min","max","step","rec","sets","srec","wu","cd"];
-const esc = s => String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-let WL = [], curId = null;
+let curId = null;
 
 const TPL = [
   {n:"10 × 400 m",t:"normal",u:"m",f:{reps:10,val:400,rec:90}},
@@ -847,17 +701,6 @@ $("tpl").onclick = e=>{
   regen();
 };
 
-async function api(url,method="GET",body){
-  const r = await fetch(url,{
-    method,
-    headers:{"Content-Type":"application/json"},
-    body: body ? JSON.stringify(body) : undefined
-  });
-  let j = {};
-  try{ j = await r.json(); }catch(e){}
-  return {ok:r.ok,j};
-}
-
 function snap(){
   const f = {};
   FIELDS.forEach(k=>f[k]=$(k).value);
@@ -878,46 +721,6 @@ function openW(w){
   $("wState").textContent = "Modification de « "+w.name+" »";
 }
 
-async function loadList(){
-  const r = await api("/api/workouts");
-  WL = r.j.workouts || [];
-  $("wList").innerHTML = WL.length ? WL.map(w=>`
-    <li>
-      <span class="nm"><a href="#" data-o="${w.id}">${esc(w.name)}</a></span>
-      <button class="mini" data-dup="${w.id}">Dupliquer</button>
-      <button class="mini" data-rm="${w.id}">Supprimer</button>
-    </li>`).join("") : "<li>Aucune séance enregistrée.</li>";
-}
-
-async function refresh(){
-  const r = await api("/api/me");
-  const on = r.ok && r.j.email;
-  $("auth").classList.toggle("hide",!!on);
-  $("libBox").classList.toggle("hide",!on);
-  if(on){ $("who").textContent = r.j.email; loadList(); gRefresh(); }
-}
-
-async function auth(kind){
-  const r = await api("/api/"+kind,"POST",{
-    email:$("aMail").value,password:$("aPw").value,invite:$("aInv").value
-  });
-  if(!r.ok){ $("aErr").textContent = r.j.error || "Erreur."; return; }
-  $("aErr").textContent = "";
-  $("aPw").value = "";
-  curId = null;
-  refresh();
-}
-
-$("aLogin").onclick = ()=>auth("login");
-$("aReg").onclick = ()=>auth("register");
-
-$("aOut").onclick = async e=>{
-  e.preventDefault();
-  await api("/api/logout","POST");
-  curId = null;
-  refresh();
-};
-
 $("wSave").onclick = async()=>{
   const name = $("wName").value.trim();
   if(!name){ $("wState").textContent = "Donne un nom à la séance."; return; }
@@ -926,77 +729,23 @@ $("wSave").onclick = async()=>{
   const r = curId
     ? await api("/api/workouts/"+curId,"PUT",body)
     : await api("/api/workouts","POST",body);
-  if(!r.ok){ $("wState").textContent = r.j.error || "Erreur d’enregistrement."; return; }
-  curId = r.j.workout.id;
-  $("wState").textContent = "Enregistrée : « "+name+" »";
-  loadList();
-};
-
-$("wList").onclick = async e=>{
-  const o = e.target.closest("[data-o]");
-  const d = e.target.closest("[data-dup]");
-  const x = e.target.closest("[data-rm]");
-  if(o){
-    e.preventDefault();
-    const w = WL.find(w=>String(w.id)===o.dataset.o);
-    if(w) openW(w);
-  }else if(d){
-    await api("/api/workouts/"+d.dataset.dup+"/duplicate","POST");
-    loadList();
-  }else if(x){
-    const w = WL.find(w=>String(w.id)===x.dataset.rm);
-    if(w && confirm("Supprimer « "+w.name+" » ?")){
-      await api("/api/workouts/"+w.id,"DELETE");
-      if(curId===w.id){ curId = null; $("wState").textContent = "Nouvelle séance."; }
-      loadList();
-    }
-  }
-};
-
-// ------------------------------------------
-// COMPTE GARMIN
-// ------------------------------------------
-
-async function gRefresh(){
-  const r = await api("/api/garmin/status");
-  const linked = !!r.j.linked;
-  $("gState").textContent = linked
-    ? "Compte Garmin : connecté ✅"
-    : (r.j.owner_env
-        ? "Compte Garmin du serveur utilisé (propriétaire)."
-        : "Compte Garmin : non connecté.");
-  $("gForm").classList.toggle("hide",linked);
-  $("gOff").classList.toggle("hide",!linked);
-}
-
-$("gGo").onclick = async()=>{
-  const mfa = !$("gMfa").classList.contains("hide");
-  $("gErr").textContent = "";
-  const r = mfa
-    ? await api("/api/garmin/mfa","POST",{code:$("gCode").value.trim()})
-    : await api("/api/garmin/connect","POST",{
-        email:$("gMail").value.trim(),password:$("gPw").value});
-  if(r.j.mfa_required){
-    $("gMfa").classList.remove("hide");
-    $("gGo").textContent = "Valider le code";
-    $("gErr").textContent = "Garmin t’a envoyé un code : saisis-le puis valide.";
+  if(r.status===401){
+    $("wState").innerHTML = '<a href="/connexion?next=/" target="_blank">Connecte-toi</a> (nouvel onglet) pour enregistrer ta séance.';
     return;
   }
-  if(!r.ok || !r.j.success){ $("gErr").textContent = r.j.error || "Erreur."; return; }
-  $("gPw").value = ""; $("gCode").value = "";
-  $("gMfa").classList.add("hide");
-  $("gGo").textContent = "Connecter mon compte Garmin";
-  gRefresh();
+  if(!r.ok){ $("wState").textContent = r.j.error || "Erreur d’enregistrement."; return; }
+  curId = r.j.workout.id;
+  $("wState").innerHTML = "Enregistrée : « "+esc(name)+" » · <a href=\"/bibliotheque\">Ma bibliothèque</a>";
 };
 
-$("gOff").onclick = async()=>{
-  if(confirm("Déconnecter ton compte Garmin ?")){
-    await api("/api/garmin/disconnect","POST");
-    gRefresh();
-  }
-};
-
-refresh();
+// Ouverture depuis la bibliothèque : /?open=ID
+(async()=>{
+  const id = new URLSearchParams(location.search).get("open");
+  if(!id) return;
+  const r = await api("/api/workouts");
+  const w = (r.j.workouts||[]).find(x=>String(x.id)===id);
+  if(w) openW(w); else $("wState").textContent = "Séance introuvable.";
+})();
 
 // ------------------------------------------
 // CREATEUR LIBRE PAR BLOCS

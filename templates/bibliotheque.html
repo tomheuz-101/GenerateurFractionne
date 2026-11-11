@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bibliothèque · Fractionné</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+</head><body><main>
+{% include "_nav.html" %}
+<h1>Bibliothèque</h1>
+<div class="card">
+  <label>Rechercher<input id="q" placeholder="Nom de séance"></label>
+  <p class="note" id="cnt" style="margin:6px 0 8px"></p>
+  <ol id="list" style="padding:0;list-style:none;margin:0"></ol>
+</div>
+<p class="note"><a href="/">+ Nouvelle séance</a></p>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const TY = {normal:"Normal",pyramide:"Pyramide",descendant:"Descendant",ascendant:"Ascendant",blocs:"Blocs"};
+let WL = [];
+async function load(){
+  const r = await api("/api/workouts");
+  if(r.status===401){ location.href = "/connexion?next=/bibliotheque"; return; }
+  WL = r.j.workouts || [];
+  draw();
+}
+function draw(){
+  const q = $("q").value.trim().toLowerCase();
+  const L = WL.filter(w=>w.name.toLowerCase().includes(q));
+  $("cnt").textContent = WL.length+" séance"+(WL.length>1?"s":"")+(q?" · "+L.length+" affichée"+(L.length>1?"s":""):"");
+  $("list").innerHTML = L.map(w=>{
+    const n = (w.data.steps||[]).filter(s=>s.type==="interval").length;
+    return `<li><span class="nm"><a href="/?open=${w.id}">${esc(w.name)}</a><br><small>${TY[w.data.type]||""} · ${n} efforts · ${fmtDate(w.updated)}</small></span>
+      <button class="mini" data-a="ren" data-i="${w.id}">Renommer</button>
+      <button class="mini" data-a="dup" data-i="${w.id}">Dupliquer</button>
+      <button class="mini" data-a="del" data-i="${w.id}">Supprimer</button></li>`;
+  }).join("") || "<li>Aucune séance.</li>";
+}
+$("q").oninput = draw;
+$("list").onclick = async e=>{
+  const b = e.target.closest("[data-a]");
+  if(!b) return;
+  const id = b.dataset.i, w = WL.find(x=>String(x.id)===id);
+  if(b.dataset.a==="dup") await api(`/api/workouts/${id}/duplicate`,"POST");
+  else if(b.dataset.a==="del"){ if(!confirm(`Supprimer « ${w.name} » ?`)) return; await api("/api/workouts/"+id,"DELETE"); }
+  else { const n = prompt("Nouveau nom",w.name); if(!n||!n.trim()) return; await api("/api/workouts/"+id,"PATCH",{name:n.trim()}); }
+  load();
+};
+load();
+</script></body></html>

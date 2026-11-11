@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Connexion · Fractionné</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+</head><body><main>
+{% include "_nav.html" %}
+<h1>Connexion</h1>
+<div class="card">
+  <div class="grid">
+    <label>E-mail<input id="mail" type="email" autocomplete="username"></label>
+    <label>Mot de passe<input id="pw" type="password" autocomplete="current-password"></label>
+    <label>Code d’invitation (création de compte)<input id="inv" autocomplete="off"></label>
+  </div>
+  <p class="err" id="err"></p>
+  <div style="display:flex;gap:8px;margin-top:8px">
+    <button class="copy" id="go" style="margin:0">Se connecter</button>
+    <button class="mini" id="reg">Créer un compte</button>
+  </div>
+</div>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const nx = (()=>{ const n = new URLSearchParams(location.search).get("next") || "/"; return /^\/(?!\/)/.test(n) ? n : "/"; })();
+async function auth(k){
+  const r = await api("/api/"+k,"POST",{email:$("mail").value,password:$("pw").value,invite:$("inv").value});
+  if(!r.ok){ $("err").textContent = r.j.error || "Erreur."; return; }
+  location.href = nx;
+}
+$("go").onclick = ()=>auth("login");
+$("reg").onclick = ()=>auth("register");
+$("pw").onkeydown = e=>{ if(e.key==="Enter") auth("login"); };
+api("/api/me").then(r=>{ if(r.ok) location.href = nx; });
+</script></body></html>

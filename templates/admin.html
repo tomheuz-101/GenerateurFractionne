@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Administration · Fractionné</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+</head><body><main>
+{% include "_nav.html" %}
+<h1>Administration</h1>
+<div class="card">
+  <h2>Invitations</h2>
+  <p class="note" style="margin-bottom:8px">Chaque code est à usage unique : donne-le à la personne, elle le saisit à la création de son compte.</p>
+  <button class="copy" id="invNew" style="margin:0 0 10px">Créer une invitation</button>
+  <ol id="inv" style="padding:0;list-style:none;margin:0"></ol>
+</div>
+<div class="card">
+  <h2>Utilisateurs</h2>
+  <ol id="users" style="padding:0;list-style:none;margin:0"></ol>
+</div>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+async function loadU(){
+  const r = await api("/api/admin/users");
+  if(!r.ok){ location.href = "/"; return; }
+  $("users").innerHTML = r.j.users.map(u=>`<li><span class="nm"><b>${esc(u.email)}</b>${u.self?" (vous)":""}<br><small>${u.workouts} séance(s) · Garmin ${u.garmin?"connecté":"non connecté"}</small></span>
+    <button class="mini" data-a="pw" data-i="${u.id}" data-e="${esc(u.email)}">Mot de passe temporaire</button>
+    ${u.self?"":`<button class="mini" data-a="rm" data-i="${u.id}" data-e="${esc(u.email)}">Supprimer</button>`}</li>`).join("");
+}
+async function loadI(){
+  const r = await api("/api/admin/invites");
+  $("inv").innerHTML = (r.j.invites||[]).map(i=>`<li><span class="nm"><code>${esc(i.code)}</code><br><small>${i.used_by?"utilisé par "+esc(i.used_by):"disponible"}</small></span>
+    <button class="mini" data-d="${i.id}">Supprimer</button></li>`).join("") || "<li>Aucune invitation.</li>";
+}
+$("invNew").onclick = async()=>{ await api("/api/admin/invites","POST"); loadI(); };
+$("inv").onclick = async e=>{ const b = e.target.closest("[data-d]"); if(b){ await api("/api/admin/invites/"+b.dataset.d,"DELETE"); loadI(); } };
+$("users").onclick = async e=>{
+  const b = e.target.closest("[data-a]");
+  if(!b) return;
+  const id = b.dataset.i, em = b.dataset.e;
+  if(b.dataset.a==="pw"){
+    if(!confirm("Générer un mot de passe temporaire pour "+em+" ?")) return;
+    const r = await api(`/api/admin/users/${id}/password`,"POST");
+    if(r.ok) prompt("Mot de passe temporaire (à transmettre à "+em+") :",r.j.password);
+  }else if(confirm("Supprimer "+em+" et toutes ses séances ?")){
+    await api("/api/admin/users/"+id,"DELETE");
+    loadU();
+  }
+};
+loadU(); loadI();
+</script></body></html>

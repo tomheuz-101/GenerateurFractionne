@@ -16,3 +16,8 @@ Générateur de séances de fractionné : bibliothèque par utilisateur, modèle
 Chaque utilisateur connecte son propre compte Garmin dans la bibliothèque : le mot de passe sert une fois, seuls des jetons chiffrés sont stockés.
 
 Démarrage : `gunicorn app:app`
+
+## Pages
+
+`/` créateur · `/bibliotheque` séances enregistrées · `/profil` compte, Garmin, mot de passe · `/admin` utilisateurs et invitations (propriétaire) · `/connexion`.
+Les invitations à usage unique se créent dans l'administration ; `INVITE_CODE` reste possible comme code partagé.

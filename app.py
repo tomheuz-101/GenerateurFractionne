@@ -5,12 +5,14 @@ import hmac
 import time
 import base64
 import hashlib
+import secrets
 import tempfile
 import math
 from datetime import datetime, timezone
 from functools import wraps
 
-from flask import Flask, request, jsonify, render_template, send_file, session
+from flask import (Flask, request, jsonify, render_template, send_file,
+                   session, redirect)
 from flask_sqlalchemy import SQLAlchemy
 from cryptography.fernet import Fernet, InvalidToken
 from werkzeug.security import generate_password_hash, check_password_hash
@@ -59,6 +61,13 @@ class Workout(db.Model):
         onupdate=lambda: datetime.now(timezone.utc))
 
 
+class Invite(db.Model):
+    """Code d'invitation à usage unique, créé par le propriétaire."""
+    id = db.Column(db.Integer, primary_key=True)
+    code = db.Column(db.String(40), unique=True, nullable=False)
+    used_by = db.Column(db.String(200))
+
+
 class GarminLink(db.Model):
     """Lien Garmin d'un utilisateur : jetons et état MFA, toujours chiffrés."""
     id = db.Column(db.Integer, primary_key=True)
@@ -99,8 +108,11 @@ def register():
     pw = d.get("password") or ""
     invite = os.environ.get("INVITE_CODE", "")
 
-    allowed = is_owner(User(email=email)) or (
-        invite and hmac.compare_digest(str(d.get("invite") or ""), invite))
+    code = str(d.get("invite") or "").strip()
+    db_invite = (Invite.query.filter_by(code=code, used_by=None).first()
+                 if code else None)
+    allowed = (is_owner(User(email=email)) or bool(db_invite)
+               or bool(invite and hmac.compare_digest(code, invite)))
     if not allowed:
         return jsonify(success=False,
                        error="Inscription sur invitation : code invalide."), 403
@@ -115,6 +127,9 @@ def register():
     user = User(email=email, pw=generate_password_hash(pw))
     db.session.add(user)
     db.session.commit()
+    if db_invite:
+        db_invite.used_by = email
+        db.session.commit()
     session["uid"] = user.id
     return jsonify(success=True, email=email)
 
@@ -229,9 +244,43 @@ def delete_workout(wid):
     return jsonify(success=True)
 
 
+@app.context_processor
+def inject_user():
+    user = current_user()
+    return {"me": user, "owner": is_owner(user)}
+
+
+def render_page(template, key, auth=True, owner_only=False):
+    if auth and not session.get("uid"):
+        return redirect("/connexion?next=" + request.path)
+    if owner_only and not is_owner(current_user()):
+        return redirect("/")
+    return render_template(template, page=key)
+
+
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", page="creator")
+
+
+@app.get("/connexion")
+def page_login():
+    return render_page("connexion.html", "login", auth=False)
+
+
+@app.get("/bibliotheque")
+def page_library():
+    return render_page("bibliotheque.html", "library")
+
+
+@app.get("/profil")
+def page_profile():
+    return render_page("profil.html", "profile")
+
+
+@app.get("/admin")
+def page_admin():
+    return render_page("admin.html", "admin", owner_only=True)
 
 
 # --------------------------------------------------
@@ -296,7 +345,7 @@ def garmin_client_for(user):
         return client
 
     raise PermissionError(
-        "Compte Garmin non connecté : connecte-le dans la bibliothèque.")
+        "Compte Garmin non connecté : connecte-le dans l'onglet Profil.")
 
 
 @app.get("/api/garmin/status")
@@ -362,6 +411,134 @@ def garmin_disconnect():
     link = get_link()
     if link:
         db.session.delete(link)
+        db.session.commit()
+    return jsonify(success=True)
+
+
+# --------------------------------------------------
+# PROFIL ET ADMINISTRATION
+# --------------------------------------------------
+
+def owner_required(f):
+    @wraps(f)
+    def wrapper(*args, **kwargs):
+        if not is_owner(current_user()):
+            return jsonify(success=False,
+                           error="Réservé au propriétaire."), 403
+        return f(*args, **kwargs)
+    return login_required(wrapper)
+
+
+def purge_user(user):
+    Workout.query.filter_by(user_id=user.id).delete()
+    GarminLink.query.filter_by(user_id=user.id).delete()
+    db.session.delete(user)
+    db.session.commit()
+
+
+@app.patch("/api/workouts/<int:wid>")
+@login_required
+def rename_workout(wid):
+    w = own_workout(wid)
+    name = ((request.get_json(silent=True) or {}).get("name") or "").strip()[:120]
+    if not w:
+        return jsonify(success=False, error="Séance introuvable."), 404
+    if not name:
+        return jsonify(success=False, error="Nom vide."), 400
+    w.name = name
+    db.session.commit()
+    return jsonify(success=True, workout=workout_json(w))
+
+
+@app.post("/api/profile/password")
+@login_required
+def change_password():
+    d = request.get_json(silent=True) or {}
+    user = current_user()
+    if not check_password_hash(user.pw, d.get("current") or ""):
+        return jsonify(success=False,
+                       error="Mot de passe actuel incorrect."), 403
+    new = d.get("new") or ""
+    if len(new) < 8:
+        return jsonify(success=False,
+                       error="Nouveau mot de passe trop court (8 min)."), 400
+    user.pw = generate_password_hash(new)
+    db.session.commit()
+    return jsonify(success=True)
+
+
+@app.post("/api/profile/delete")
+@login_required
+def delete_account():
+    d = request.get_json(silent=True) or {}
+    user = current_user()
+    if not check_password_hash(user.pw, d.get("password") or ""):
+        return jsonify(success=False, error="Mot de passe incorrect."), 403
+    purge_user(user)
+    session.clear()
+    return jsonify(success=True)
+
+
+@app.get("/api/admin/users")
+@owner_required
+def admin_users():
+    rows = []
+    for u in User.query.order_by(User.id).all():
+        linked = GarminLink.query.filter(
+            GarminLink.user_id == u.id,
+            GarminLink.tokens.isnot(None)).first()
+        rows.append({
+            "id": u.id, "email": u.email, "owner": is_owner(u),
+            "self": u.id == session["uid"], "garmin": bool(linked),
+            "workouts": Workout.query.filter_by(user_id=u.id).count()})
+    return jsonify(success=True, users=rows)
+
+
+@app.delete("/api/admin/users/<int:uid>")
+@owner_required
+def admin_delete_user(uid):
+    user = db.session.get(User, uid)
+    if not user or uid == session["uid"]:
+        return jsonify(success=False, error="Suppression impossible."), 400
+    purge_user(user)
+    return jsonify(success=True)
+
+
+@app.post("/api/admin/users/<int:uid>/password")
+@owner_required
+def admin_reset_password(uid):
+    user = db.session.get(User, uid)
+    if not user:
+        return jsonify(success=False, error="Utilisateur introuvable."), 404
+    new = secrets.token_urlsafe(9)
+    user.pw = generate_password_hash(new)
+    db.session.commit()
+    return jsonify(success=True, password=new)
+
+
+@app.get("/api/admin/invites")
+@owner_required
+def admin_invites():
+    rows = Invite.query.order_by(Invite.id.desc()).all()
+    return jsonify(success=True, invites=[
+        {"id": i.id, "code": i.code, "used_by": i.used_by} for i in rows])
+
+
+@app.post("/api/admin/invites")
+@owner_required
+def admin_create_invite():
+    inv = Invite(code=secrets.token_urlsafe(6))
+    db.session.add(inv)
+    db.session.commit()
+    return jsonify(success=True, code=inv.code)
+
+
+@app.delete("/api/admin/invites/<int:iid>")
+@owner_required
+def admin_delete_invite(iid):
+    inv = db.session.get(Invite, iid)
+    if inv:
+        db.session.delete(inv)
         db.session.commit()
     return jsonify(success=True)
 
