@@ -16,6 +16,7 @@ from flask import (Flask, request, jsonify, render_template, send_file,
 from flask_sqlalchemy import SQLAlchemy
 from cryptography.fernet import Fernet, InvalidToken
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.middleware.proxy_fix import ProxyFix
 from garminconnect import Garmin
 
 from fit_tool.fit_file_builder import FitFileBuilder
@@ -26,6 +27,8 @@ from fit_tool.profile.profile_type import FileType, Manufacturer, Sport, Intensi
 
 
 app = Flask(__name__)
+# Derrière le proxy de Render : bonne IP cliente et bon schéma (https)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 
 # --------------------------------------------------
 # BASE DE DONNEES ET COMPTES
@@ -92,15 +95,44 @@ with app.app_context():
 def login_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
-        if not session.get("uid"):
+        if not current_user():
             return jsonify(success=False, error="Connexion requise."), 401
         return f(*args, **kwargs)
     return wrapper
 
 
+def _fp(user):
+    """Empreinte du mot de passe : change quand le mot de passe change."""
+    return hashlib.sha256(user.pw.encode()).hexdigest()[:16]
+
+
 def current_user():
     uid = session.get("uid")
-    return db.session.get(User, uid) if uid else None
+    user = db.session.get(User, uid) if uid else None
+    # Toute session ouverte avant un changement de mot de passe est invalidée.
+    if user and session.get("fp") != _fp(user):
+        session.clear()
+        return None
+    return user
+
+
+# Limiteur simple en mémoire (par processus) contre force brute et spam d'e-mails
+_hits = {}
+
+
+def rate_blocked(key, limit, window):
+    now = time.time()
+    hits = [t for t in _hits.get(key, []) if now - t < window]
+    _hits[key] = hits
+    return len(hits) >= limit
+
+
+def rate_hit(key):
+    if len(_hits) > 10000:
+        cutoff = time.time() - 3600
+        for k in [k for k, v in _hits.items() if not v or v[-1] < cutoff]:
+            del _hits[k]
+    _hits.setdefault(key, []).append(time.time())
 
 
 def is_owner(user):
@@ -138,6 +170,7 @@ def register():
         db_invite.used_by = email
         db.session.commit()
     session["uid"] = user.id
+    session["fp"] = _fp(user)
     return jsonify(success=True, email=email)
 
 
@@ -145,11 +178,17 @@ def register():
 def login():
     d = request.get_json(silent=True) or {}
     email = (d.get("email") or "").strip().lower()
+    key = "login:" + (request.remote_addr or "?") + ":" + email
+    if rate_blocked(key, 8, 900):
+        return jsonify(success=False,
+                       error="Trop de tentatives : réessaie dans 15 minutes."), 429
     user = User.query.filter_by(email=email).first()
     if not user or not check_password_hash(user.pw, d.get("password") or ""):
+        rate_hit(key)
         return jsonify(success=False,
                        error="E-mail ou mot de passe incorrect."), 401
     session["uid"] = user.id
+    session["fp"] = _fp(user)
     return jsonify(success=True, email=user.email)
 
 
@@ -258,7 +297,7 @@ def inject_user():
 
 
 def render_page(template, key, auth=True, owner_only=False):
-    if auth and not session.get("uid"):
+    if auth and not current_user():
         return redirect("/connexion?next=" + request.path)
     if owner_only and not is_owner(current_user()):
         return redirect("/")
@@ -336,12 +375,22 @@ def create_reset_token(user):
 def forgot_password():
     d = request.get_json(silent=True) or {}
     email = (d.get("email") or "").strip().lower()
+    ip = request.remote_addr or "?"
+    if rate_blocked("fp:" + email, 3, 3600) or rate_blocked("fpip:" + ip, 10, 3600):
+        return jsonify(success=False,
+                       error="Trop de demandes : réessaie dans une heure."), 429
+    rate_hit("fp:" + email)
+    rate_hit("fpip:" + ip)
     user = User.query.filter_by(email=email).first()
 
     # Réponse identique que le compte existe ou non,
     # pour ne pas révéler qui a un compte.
     if user:
-        base_url = os.environ.get("APP_URL", request.host_url.rstrip("/"))
+        # APP_URL, sinon l'adresse publique fournie par Render, sinon l'hôte de
+        # la requête (développement local uniquement)
+        base_url = (os.environ.get("APP_URL")
+                    or os.environ.get("RENDER_EXTERNAL_URL")
+                    or request.host_url).rstrip("/")
         link = base_url + "/reinitialisation?token=" + create_reset_token(user)
         try:
             send_email(
@@ -352,10 +401,9 @@ def forgot_password():
                 "\n\nSi tu n'es pas à l'origine de cette demande, "
                 "ignore ce message.")
         except Exception:
+            # Réponse générique quand même : une erreur propre aux comptes
+            # existants révélerait qui a un compte.
             app.logger.exception("Envoi de l'e-mail de réinitialisation impossible")
-            return jsonify(success=False,
-                           error="Envoi de l'e-mail impossible, réessaie plus "
-                                 "tard."), 502
 
     return jsonify(success=True,
                    message="Si un compte existe avec cet e-mail, un lien de "
@@ -554,7 +602,7 @@ def owner_required(f):
 def purge_user(user):
     Workout.query.filter_by(user_id=user.id).delete()
     GarminLink.query.filter_by(user_id=user.id).delete()
-    PasswordReset.query.filter_by(user_id=user.id).delete()   # ← nouvelle ligne
+    PasswordReset.query.filter_by(user_id=user.id).delete()
     db.session.delete(user)
     db.session.commit()
 
@@ -587,6 +635,7 @@ def change_password():
                        error="Nouveau mot de passe trop court (8 min)."), 400
     user.pw = generate_password_hash(new)
     db.session.commit()
+    session["fp"] = _fp(user)
     return jsonify(success=True)
 
 
