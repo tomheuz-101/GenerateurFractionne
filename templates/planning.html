@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="fr"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Planning · Fractionné</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=Barlow:wght@400;500;600&display=swap">
+<link rel="stylesheet" href="/static/style.css">
+</head><body><main>
+{% include "_nav.html" %}
+<h1>Planning</h1>
+
+<div class="card" id="todayCard" hidden>
+  <h2>Séance du jour</h2>
+  <p id="todayTxt" style="margin:0 0 8px"></p>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <a class="copy" id="todayOpen" href="#" style="text-decoration:none">Ouvrir dans le créateur</a>
+    <button class="mini" id="todayDone">Marquer comme faite</button>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Nouveau plan</h2>
+  <div class="grid">
+    <label>Nom du plan<input id="npName" placeholder="Préparation 10 km"></label>
+    <label>Durée (semaines)<input id="npWeeks" type="number" min="1" max="30" value="6"></label>
+    <label>Début<input id="npStart" type="date"></label>
+  </div>
+  <p class="err" id="npErr"></p>
+  <button class="copy" id="npGo" style="margin-top:8px">Créer le plan</button>
+</div>
+
+<div class="card">
+  <h2>Mes plans</h2>
+  <div class="grid">
+    <label>Plan<select id="planSel"></select></label>
+    <div style="display:flex;align-items:flex-end"><button class="mini" id="planDel" style="width:100%">Supprimer ce plan</button></div>
+  </div>
+  <div id="weeks" style="margin-top:10px"></div>
+</div>
+</main>
+<script src="/static/common.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const WD = ["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"];
+let PLANS = [], WL = [], cur = null, TODAY = null;
+
+function dayDate(p, day){
+  const d = new Date(p.start + "T12:00:00");
+  d.setDate(d.getDate() + (day.week - 1) * 7 + (day.weekday - 1));
+  return d;
+}
+const fdate = d => d.toLocaleDateString("fr-FR", { day:"numeric", month:"short" });
+
+async function load(){
+  const [rp, rw] = await Promise.all([api("/api/plans"), api("/api/workouts")]);
+  if(rp.status === 401){ location.href = "/connexion?next=/planning"; return; }
+  PLANS = rp.j.plans || [];
+  WL = rw.j.workouts || [];
+  $("planSel").innerHTML = PLANS.map(p => `<option value="${p.id}">${esc(p.name)}</option>`).join("")
+    || "<option value=''>Aucun plan</option>";
+  cur = PLANS.find(p => String(p.id) === $("planSel").value) || null;
+  draw();
+}
+
+function draw(){
+  // ---- Séance du jour ----
+  TODAY = null;
+  const now = new Date(); now.setHours(12,0,0,0);
+  for(const p of PLANS){
+    for(const d of p.days){
+      const dt = dayDate(p, d);
+      if(dt.toDateString() === now.toDateString() && (d.workout_id || d.label)){
+        TODAY = { plan: p, day: d };
+        break;
+      }
+    }
+    if(TODAY) break;
+  }
+  $("todayCard").hidden = !TODAY;
+  if(TODAY){
+    const t = TODAY.day;
+    $("todayTxt").innerHTML = `<b>${esc(TODAY.plan.name)}</b> · semaine ${t.week} · ` +
+      (t.workout_id ? esc(t.workout_name) : esc(t.label || ""));
+    $("todayOpen").hidden = !t.workout_id;
+    if(t.workout_id) $("todayOpen").href = "/?open=" + t.workout_id;
+    $("todayDone").textContent = t.done ? "✅ Fait" : "Marquer comme faite";
+  }
+
+  // ---- Semaines du plan courant ----
+  if(!cur){ $("weeks").innerHTML = "<p class='note'>Crée ton premier plan ci-dessus.</p>"; return; }
+  let html = "";
+  for(let wk = 1; wk <= cur.weeks; wk++){
+    const days = cur.days.filter(d => d.week === wk);
+    html += `<details class="wk" ${wk === 1 ? "open" : ""}><summary>Semaine ${wk}</summary>`;
+    for(const d of days){
+      const dt = dayDate(cur, d);
+      const opts = ["<option value=''>—</option><option value='repos'>Repos / libre</option>"]
+        .concat(WL.map(w => `<option value="${w.id}" ${d.workout_id === w.id ? "selected" : ""}>${esc(w.name)}</option>`))
+        .join("");
+      const txt = d.workout_id ? esc(d.workout_name) : esc(d.label || "");
+      html += `<div class="pday ${d.done ? "done" : ""}">
+        <span class="dt">${WD[d.weekday - 1]}<br><small>${fdate(dt)}</small></span>
+        <select data-day="${d.id}">${opts}</select>
+        <input class="lb" data-lb="${d.id}" value="${txt}" placeholder="Repos, footing…" ${d.workout_id ? "hidden" : ""}>
+        <button class="mini" data-done="${d.id}" title="Marquer comme faite">${d.done ? "✅" : "○"}</button>
+      </div>`;
+    }
+    html += "</details>";
+  }
+  $("weeks").innerHTML = html;
+}
+
+// Changement de séance via le select
+$("weeks").addEventListener("change", async e => {
+  const sel = e.target.closest("select[data-day]");
+  if(!sel) return;
+  const did = sel.dataset.day, v = sel.value;
+  const body = v === "" ? { workout_id: null, label: "" }
+    : v === "repos" ? { workout_id: null, label: "Repos" }
+    : { workout_id: parseInt(v, 10) };
+  await api(`/api/plans/${cur.id}/days/${did}`, "PUT", body);
+  load();
+});
+
+// Texte libre
+$("weeks").addEventListener("change", async e => {
+  const inp = e.target.closest("input[data-lb]");
+  if(!inp) return;
+  await api(`/api/plans/${cur.id}/days/${inp.dataset.lb}`, "PUT", { label: inp.value });
+  load();
+});
+
+// Marquer comme faite
+$("weeks").addEventListener("click", async e => {
+  const b = e.target.closest("[data-done]");
+  if(!b || !cur) return;
+  const d = cur.days.find(x => String(x.id) === b.dataset.done);
+  await api(`/api/plans/${cur.id}/days/${d.id}/done`, "POST", { done: !d.done });
+  load();
+});
+
+$("todayDone").onclick = async () => {
+  if(!TODAY) return;
+  await api(`/api/plans/${TODAY.plan.id}/days/${TODAY.day.id}/done`, "POST", { done: !TODAY.day.done });
+  load();
+};
+
+$("npGo").onclick = async () => {
+  $("npErr").textContent = "";
+  const r = await api("/api/plans", "POST", {
+    name: $("npName").value, weeks: $("npWeeks").value, start: $("npStart").value
+  });
+  if(!r.ok){ $("npErr").textContent = r.j.error || "Erreur."; return; }
+  $("npName").value = "";
+  load();
+};
+
+$("planDel").onclick = async () => {
+  if(!cur || !confirm(`Supprimer le plan « ${cur.name} » ?`)) return;
+  await api("/api/plans/" + cur.id, "DELETE");
+  load();
+};
+
+$("npStart").value = new Date().toISOString().slice(0, 10);
+load();
+</script></body></html>
