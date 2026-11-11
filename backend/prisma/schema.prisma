@@ -42,7 +42,7 @@ model Workout {
   name      String   @db.VarChar(120)
   data      Json     @db.JsonB
   createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   planDays PlanDay[]
