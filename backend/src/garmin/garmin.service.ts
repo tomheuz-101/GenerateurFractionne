@@ -69,20 +69,39 @@ export class GarminService {
     });
   }
 
-  private async clientFor(userId: number): Promise<GarminConnect> {
-    const link = await this.prisma.garminLink.findUnique({ where: { userId } });
-    if (!link || !link.tokens) {
-      throw new UnauthorizedException(
-        'Compte Garmin non connecté : connecte-le dans le profil.',
-      );
-    }
-    const tokens = JSON.parse(dec(link.tokens)) as Record<string, unknown>;
-    const oauth1 = tokens.oauth1 ?? tokens.oauth1Token;
-    const oauth2 = tokens.oauth2 ?? tokens.oauth2Token;
-    const client = new GarminConnect();
-    (client as unknown as { loadToken: (a: unknown, b: unknown) => void }).loadToken(oauth1, oauth2);
-    return client;
+private async clientFor(userId: number): Promise<GarminConnect> {
+  const link = await this.prisma.garminLink.findUnique({ where: { userId } });
+
+  if (!link || !link.tokens) {
+    throw new UnauthorizedException(
+      'Compte Garmin non connecté : connecte-le dans le profil.',
+    );
   }
+
+  const tokens = JSON.parse(dec(link.tokens)) as Record<string, unknown>;
+
+  const oauth1 = tokens.oauth1 ?? tokens.oauth1Token;
+  const oauth2 = tokens.oauth2 ?? tokens.oauth2Token;
+
+  if (!oauth1 || !oauth2) {
+    throw new UnauthorizedException(
+      'Session Garmin invalide : reconnecte ton compte Garmin.',
+    );
+  }
+
+  // Le constructeur exige un objet credentials,
+  // mais ces valeurs ne servent pas à authentifier la session.
+  const client = new GarminConnect({
+    username: 'token-session',
+    password: 'not-used',
+  });
+
+  (client as unknown as {
+    loadToken: (a: unknown, b: unknown) => void;
+  }).loadToken(oauth1, oauth2);
+
+  return client;
+}
 
   private static errorMessage(err: unknown): string {
     return String(err instanceof Error ? err.message : err).slice(0, 150);
@@ -103,11 +122,20 @@ export class GarminService {
       throw new BadRequestException('Connexion Garmin déjà en cours.');
     }
 
-    let deferred!: DeferredCode;
-    const promise = new Promise<string>((resolve, reject) => {
-      deferred = { promise, resolve, reject };
-    });
-    const timer = setTimeout(
+let resolveCode!: (code: string) => void;
+let rejectCode!: (err: Error) => void;
+
+const promise = new Promise<string>((resolve, reject) => {
+  resolveCode = resolve;
+  rejectCode = reject;
+});
+
+const deferred: DeferredCode = {
+  promise,
+  resolve: resolveCode,
+  reject: rejectCode,
+};
+const timer = setTimeout(
       () => deferred.reject(new Error('Délai dépassé, recommence la connexion.')),
       MFA_TIMEOUT_MS,
     );
@@ -334,14 +362,15 @@ export class GarminService {
           'Valeur invalide à l’étape ' + (index + 1) + '.',
         );
       }
-      writer.writeMessage('workout_step', {
-        message_index: { value: index },
-        wkt_step_name: (step.type ?? 'interval').slice(0, 16),
-        intensity: 'active',
-        duration_type: step.kind === 'time' ? 'time' : 'distance',
-        duration_time: step.kind === 'time' ? value * 1000 : undefined,
-        duration_distance: step.kind === 'distance' ? value : undefined,
-      } as never);
+      const isTime = step.kind === 'time';
+
+writer.writeMessage('workout_step', {
+  message_index: { value: index },
+  wkt_step_name: (step.type ?? 'interval').slice(0, 16),
+  intensity: 'active',
+  duration_type: isTime ? 'time' : 'distance',
+  duration_value: isTime ? value * 1000 : value,
+} as never);
     });
 
     const view = writer.finish();

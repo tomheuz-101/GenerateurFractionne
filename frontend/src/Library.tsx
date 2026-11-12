@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api, dur } from './api';
-import { STEP_NAMES } from './types';
 import type { Step, Workout } from './types';
 
 function stepDuration(x: Step): number {

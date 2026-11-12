@@ -92,13 +92,12 @@ export default function Profil({
       setVmaMsg('VMA invalide (8 à 30 km/h).');
       return;
     }
-    const r = await api('/api/profile/vma', 'POST', { vma: v });
+    const r = await api<{ error?: string }>('/api/profile/vma', 'POST', { vma: v });
     setVmaMsg(r.ok ? 'VMA enregistrée ✅' : r.j.error || 'Erreur.');
   }
 
   async function pGo() {
-    const r = await api('/api/profile/password', 'POST', {
-      current: pCur,
+    const r = await api<{ error?: string }>('/api/profile/password', 'POST', {       current: pCur,
       new: pNew,
     });
     setPMsg(r.ok ? 'Mot de passe modifié.' : r.j.error || 'Erreur.');
@@ -116,8 +115,7 @@ export default function Profil({
     ) {
       return;
     }
-    const r = await api('/api/profile/delete', 'POST', { password: dPw });
-    if (r.ok) onAccountDeleted();
+    const r = await api<{ error?: string }>('/api/profile/delete', 'POST', { password: dPw });    if (r.ok) onAccountDeleted();
     else setDErr(r.j.error || 'Erreur.');
   }
 

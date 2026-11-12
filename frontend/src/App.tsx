@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { api } from './api';
 import Admin from './Admin';
 import Creator from './Creator';
 import Library from './Library';
