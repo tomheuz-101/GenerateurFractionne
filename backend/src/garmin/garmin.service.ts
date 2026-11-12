@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import {
@@ -263,7 +264,7 @@ export class GarminService {
     });
 
     const client = await this.clientFor(userId);
-    const result = (await client.createWorkout(wb.build())) as Record<
+    const result = (await client.createWorkout(wb.build())) as unknown as Record<
       string,
       unknown
     >;
@@ -334,7 +335,7 @@ export class GarminService {
         );
       }
       writer.writeMessage('workout_step', {
-        message_index: index,
+        message_index: { value: index },
         wkt_step_name: (step.type ?? 'interval').slice(0, 16),
         intensity: 'active',
         duration_time: step.kind === 'time' ? value * 1000 : undefined,
