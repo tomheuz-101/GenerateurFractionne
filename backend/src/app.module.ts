@@ -5,6 +5,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { WorkoutsModule } from './workouts/workouts.module';
 import { PlansModule } from './plans/plans.module';
+import { GarminModule } from './garmin/garmin.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { PlansModule } from './plans/plans.module';
     AuthModule,
     WorkoutsModule,
     PlansModule,
+    GarminModule,
   ],
   controllers: [AppController],
   providers: [],
