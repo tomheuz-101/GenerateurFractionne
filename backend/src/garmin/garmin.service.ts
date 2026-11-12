@@ -338,9 +338,10 @@ export class GarminService {
         message_index: { value: index },
         wkt_step_name: (step.type ?? 'interval').slice(0, 16),
         intensity: 'active',
+        duration_type: step.kind === 'time' ? 'time' : 'distance',
         duration_time: step.kind === 'time' ? value * 1000 : undefined,
         duration_distance: step.kind === 'distance' ? value : undefined,
-      });
+      } as never);
     });
 
     const view = writer.finish();
