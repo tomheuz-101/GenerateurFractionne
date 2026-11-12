@@ -1,9 +1,11 @@
 import { useEffect, useState } from 'react';
 import { api } from './api';
+import Admin from './Admin';
 import Creator from './Creator';
 import Library from './Library';
 import Login from './Login';
 import Planning from './Planning';
+import Profil from './Profil';
 
 type ApiStatus = 'loading' | 'online' | 'offline';
 type AuthState = 'loading' | 'anon' | 'authed';
@@ -17,6 +19,7 @@ const NAV = [
   { hash: '#/', label: 'Créateur', icon: '⚡' },
   { hash: '#/bibliotheque', label: 'Bibliothèque', icon: '📚' },
   { hash: '#/planning', label: 'Planning', icon: '🗓️' },
+  { hash: '#/profil', label: 'Profil', icon: '⚙️' },
 ];
 
 function currentHash() {
@@ -116,7 +119,7 @@ export default function App() {
           </p>
 
           <div className="status-card">
-            <span className={`status-dot ${apiStatus}`} />
+            <span className={'status-dot ' + apiStatus} />
             <div>
               <strong>
                 {apiStatus === 'loading' && 'Vérification de l’API…'}
@@ -152,6 +155,10 @@ export default function App() {
     if (window.innerWidth <= 860) setOpen(false);
   };
 
+  const nav = session.isAdmin
+    ? [...NAV, { hash: '#/admin', label: 'Administration', icon: '🛡️' }]
+    : NAV;
+
   return (
     <div className={'app-shell ' + (open ? 'sb-open' : 'sb-closed')}>
       <button
@@ -166,7 +173,7 @@ export default function App() {
       {open && <div className="sb-overlay" onClick={() => setOpen(false)} />}
       <nav className="sb">
         <div className="sb-lb">Fractionné</div>
-        {NAV.map((n) => (
+        {nav.map((n) => (
           <a
             key={n.hash}
             href={n.hash}
@@ -185,6 +192,17 @@ export default function App() {
         {hash === '#/' && <Creator />}
         {hash === '#/bibliotheque' && <Library />}
         {hash === '#/planning' && <Planning />}
+        {hash === '#/profil' && (
+          <Profil
+            email={session.email}
+            onAccountDeleted={() => {
+              setSession(null);
+              setAuthState('anon');
+              window.location.hash = '';
+            }}
+          />
+        )}
+        {hash === '#/admin' && session.isAdmin && <Admin meEmail={session.email} />}
       </main>
     </div>
   );

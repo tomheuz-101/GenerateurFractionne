@@ -6,6 +6,8 @@ import { AuthModule } from './auth/auth.module';
 import { WorkoutsModule } from './workouts/workouts.module';
 import { PlansModule } from './plans/plans.module';
 import { GarminModule } from './garmin/garmin.module';
+import { ProfileModule } from './profile/profile.module';
+import { AdminModule } from './admin/admin.module';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { GarminModule } from './garmin/garmin.module';
     WorkoutsModule,
     PlansModule,
     GarminModule,
+    ProfileModule,
+    AdminModule,
   ],
   controllers: [AppController],
   providers: [],
