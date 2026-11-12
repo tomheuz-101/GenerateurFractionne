@@ -13,7 +13,7 @@ import { CurrentUser } from '../auth/current-user.decorator';
 import { SessionGuard } from '../auth/session.guard';
 import { GarminService } from './garmin.service';
 
-@Controller('api/garmin')
+@Controller('garmin')
 @UseGuards(SessionGuard)
 export class GarminController {
   constructor(private readonly garmin: GarminService) {}
