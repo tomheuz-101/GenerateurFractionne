@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { CSSProperties } from 'react';
+import type { CSSProperties, FormEvent } from 'react';
 import { api, mmss, dur, parsePace } from './api';
 import { STEP_NAMES, TYPE_LABELS } from './types';
 import type { Block, Step, StepType, Workout } from './types';
@@ -209,6 +209,14 @@ export default function Creator() {
   const [wState, setWState] = useState('Nouvelle séance · Ma bibliothèque');
   const [msg, setMsg] = useState('Étape suivante : envoi vers Garmin Connect.');
   const [vma, setVma] = useState<number | null>(null);
+  const [garminLinked, setGarminLinked] = useState(false);
+  const [garminOpen, setGarminOpen] = useState(false);
+  const [garminEmail, setGarminEmail] = useState('');
+  const [garminPassword, setGarminPassword] = useState('');
+  const [garminCode, setGarminCode] = useState('');
+  const [garminMfa, setGarminMfa] = useState(false);
+  const [garminBusy, setGarminBusy] = useState(false);
+  const [garminErr, setGarminErr] = useState('');
 
   useEffect(() => {
     setSteps(buildSteps(type, unit, fields, blocks));
@@ -217,6 +225,9 @@ export default function Creator() {
   useEffect(() => {
     api<{ vma: number | null }>('/api/auth/me').then((r) => {
       if (r.ok && r.j.vma) setVma(r.j.vma);
+    });
+    api<{ linked: boolean }>('/api/garmin/status').then((r) => {
+      if (r.ok) setGarminLinked(Boolean(r.j.linked));
     });
   }, []);
 
@@ -303,20 +314,104 @@ export default function Creator() {
     }));
   };
 
-  const save = async () => {
+  const save = async (): Promise<number | null> => {
     const name = wName.trim();
-    if (!name) { setWState('Donne un nom à la séance.'); return; }
-    if (!steps.length) { setWState('La séance est vide.'); return; }
+    if (!name) { setWState('Donne un nom à la séance.'); return null; }
+    if (!steps.length) { setWState('La séance est vide.'); return null; }
     const body = { name, data: { type, unit, f: fields, steps, blocks } };
     const r = curId
       ? await api('/api/workouts/' + curId, 'PUT', body)
       : await api('/api/workouts', 'POST', body);
     if (!r.ok) {
       setWState((r.j as { error?: string }).error || 'Erreur d’enregistrement.');
+      return null;
+    }
+    const id = (r.j as { workout: Workout }).workout.id;
+    setCurId(id);
+    setWState('Enregistrée : « ' + name + ' » · Ma bibliothèque');
+    return id;
+  };
+
+  const garminConnect = async (e?: FormEvent) => {
+    e?.preventDefault();
+    setGarminErr('');
+    if (!garminEmail.trim() || !garminPassword) {
+      setGarminErr('E-mail et mot de passe Garmin requis.');
       return;
     }
-    setCurId((r.j as { workout: Workout }).workout.id);
-    setWState('Enregistrée : « ' + name + ' » · Ma bibliothèque');
+    setGarminBusy(true);
+    try {
+      const r = await api<{ mfaRequired?: boolean; error?: string }>(
+        '/api/garmin/connect', 'POST',
+        { email: garminEmail.trim(), password: garminPassword },
+      );
+      if (r.j.mfaRequired) { setGarminMfa(true); return; }
+      if (!r.ok) { setGarminErr(r.j.error || 'Connexion Garmin refusée.'); return; }
+      setGarminLinked(true);
+      setGarminOpen(false);
+      setGarminMfa(false);
+      setGarminPassword('');
+      setGarminCode('');
+      setMsg('Compte Garmin connecté.');
+    } finally {
+      setGarminBusy(false);
+    }
+  };
+
+  const garminSubmitMfa = async (e?: FormEvent) => {
+    e?.preventDefault();
+    setGarminErr('');
+    if (!garminCode.trim()) {
+      setGarminErr('Entre le code de vérification.');
+      return;
+    }
+    setGarminBusy(true);
+    try {
+      const r = await api<{ error?: string }>('/api/garmin/mfa', 'POST', { code: garminCode.trim() });
+      if (!r.ok) { setGarminErr(r.j.error || 'Code refusé.'); return; }
+      setGarminLinked(true);
+      setGarminOpen(false);
+      setGarminMfa(false);
+      setGarminPassword('');
+      setGarminCode('');
+      setMsg('Compte Garmin connecté.');
+    } finally {
+      setGarminBusy(false);
+    }
+  };
+
+  const garminDisconnect = async () => {
+    await api('/api/garmin/disconnect', 'POST');
+    setGarminLinked(false);
+    setGarminOpen(false);
+    setMsg('Compte Garmin déconnecté.');
+  };
+
+  const sendToGarmin = async () => {
+    setMsg('Envoi vers Garmin Connect…');
+    const id = curId ?? await save();
+    if (!id) { setMsg('Enregistre la séance avant l’envoi.'); return; }
+    const r = await api<{ workoutId?: string; message?: string; error?: string }>(
+      '/api/garmin/send/' + id, 'POST',
+    );
+    const errText = (r.j as { error?: string }).error || '';
+    if (r.status === 401 || errText.includes('non connecté')) {
+      setMsg('');
+      setGarminErr('');
+      setGarminMfa(false);
+      setGarminOpen(true);
+      return;
+    }
+    if (!r.ok) { setMsg('Échec de l’envoi : ' + (errText || 'erreur inconnue')); return; }
+    setMsg('✅ ' + ((r.j as { message?: string }).message || 'Séance envoyée !') +
+      ' (Garmin #' + (r.j as { workoutId?: string }).workoutId + ')');
+  };
+
+  const exportFit = async () => {
+    const id = curId ?? await save();
+    if (!id) { setMsg('Enregistre la séance avant l’export.'); return; }
+    window.location.href = '/api/garmin/fit/' + id;
+    setMsg('Fichier .fit en cours de téléchargement.');
   };
 
   const copyJson = async () => {
@@ -588,10 +683,10 @@ export default function Creator() {
 
       <div className="actionbar">
         <div className="in">
-          <button className="copy" type="button" style={{ background: '#df5320', margin: 0 }} disabled title="Bientôt disponible : le module Garmin n’est pas encore porté">
+          <button className="copy" type="button" style={{ background: '#df5320', margin: 0 }} title={garminLinked ? 'Envoyer vers Garmin Connect' : 'Connecter ton compte Garmin'} onClick={sendToGarmin}>
             📤 Garmin
           </button>
-          <button className="copy" type="button" style={{ background: '#16a34a', margin: 0 }} disabled title="Bientôt disponible : l’export .fit n’est pas encore porté">
+          <button className="copy" type="button" style={{ background: '#16a34a', margin: 0 }} title="Télécharger en .fit" onClick={exportFit}>
             ⬇ .fit
           </button>
           <button className="copy" type="button" style={{ margin: 0 }} onClick={save}>
@@ -622,6 +717,59 @@ export default function Creator() {
         </div>
         <p className="note" style={{ marginTop: 6 }}>{wState}</p>
       </div>
+
+      {garminOpen && (
+        <div className="modal-overlay" onClick={() => { if (!garminBusy) setGarminOpen(false); }}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h2>Compte Garmin Connect</h2>
+            {!garminMfa ? (
+              <form onSubmit={garminConnect}>
+                <p className="note" style={{ marginBottom: 10 }}>
+                  {garminLinked
+                    ? 'Compte déjà connecté : tu peux le reconnecter ou le délier.'
+                    : 'Le mot de passe Garmin ne sert qu’une fois : seuls des jetons chiffrés sont conservés.'}
+                </p>
+                <label>
+                  E-mail Garmin
+                  <input type="email" value={garminEmail} required
+                    onChange={(e) => setGarminEmail(e.target.value)} />
+                </label>
+                <label>
+                  Mot de passe Garmin
+                  <input type="password" value={garminPassword} required
+                    onChange={(e) => setGarminPassword(e.target.value)} />
+                </label>
+                {garminErr && <p className="err">{garminErr}</p>}
+                <div className="modal-actions">
+                  {garminLinked && (
+                    <button className="mini" type="button" onClick={garminDisconnect}>Délier</button>
+                  )}
+                  <button className="copy" type="submit" disabled={garminBusy}>
+                    {garminBusy ? 'Connexion…' : 'Se connecter'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={garminSubmitMfa}>
+                <p className="note" style={{ marginBottom: 10 }}>
+                  Garmin a envoyé un code de vérification. Entre-le ci-dessous (valable 10 min).
+                </p>
+                <label>
+                  Code de vérification
+                  <input value={garminCode} required inputMode="numeric" autoFocus
+                    onChange={(e) => setGarminCode(e.target.value)} />
+                </label>
+                {garminErr && <p className="err">{garminErr}</p>}
+                <div className="modal-actions">
+                  <button className="copy" type="submit" disabled={garminBusy}>
+                    {garminBusy ? 'Vérification…' : 'Valider'}
+                  </button>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
     </>
   );
 }
